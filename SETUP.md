@@ -33,5 +33,5 @@ iPhone: Safari → Share → Add to Home Screen.
 
 ## How it is built
 - `public/index.html`: the page.
-- `src/worker.js`: checks the Access sign-in on every request, calls Todoist's API with your token, and stores temp tasks in Workers KV (namespace `docket`, kept 14 days).
+- `src/worker.js`: checks the Access sign-in on every request, calls Todoist's API with your token, and stores temp tasks in Workers KV (created automatically on first deploy, kept 14 days).
 - `wrangler.toml`: Worker settings. Secrets are never in the repository.
