@@ -1,0 +1,7 @@
+{
+  "name": "docket",
+  "private": true,
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy", "check": "wrangler deploy --dry-run --outdir dist" },
+  "devDependencies": { "wrangler": "^4.40.0" }
+}

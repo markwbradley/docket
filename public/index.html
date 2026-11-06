@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Docket</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Docket">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F6F7F9">
+<style>
+:root{--bg:#F6F7F9;--card:#FFFFFF;--ink:#1B1F2A;--soft:#5B6372;--muted:#8A91A0;--line:#E3E6EB;--line2:#EEF0F3;--ok:#1F6E55;--okbg:#E2F3EC;--warn:#9A5212;--warnbg:#FBEEDF;--bad:#B42318;--badbg:#FDECEA;--blue:#2448B0;--bluebg:#E8EEFC;--now:#C2410C}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select{font:inherit;color:inherit}
+h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
+.num{font-variant-numeric:tabular-nums}
+.top{position:sticky;top:0;z-index:20;background:rgba(246,247,249,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topin{max-width:1180px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px}
+.top h1{font-size:19px}
+.top .date{color:var(--soft);font-size:14px}
+.sum{color:var(--soft);font-size:13px;margin-left:auto;text-align:right}
+.icon{width:34px;height:34px;flex-shrink:0;border:1px solid var(--line);background:#FFFFFF;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#B8BFCB}
+.dot.ok{background:#2E8B6E}.dot.err{background:var(--bad)}.dot.wait{background:#D9A11A}
+.bar{height:3px;background:var(--line2)}
+.bar i{display:block;height:3px;background:#2E8B6E;transition:width .3s}
+.wrap{max-width:1180px;margin:0 auto;padding:16px;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (min-width:861px){.wrap{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr)}.bkpane{order:1}.listpane{order:2}}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr);padding:12px}.sum{display:none}}
+.pane h2{font-size:15px;display:flex;align-items:baseline;gap:8px;margin:2px 2px 10px}
+.pane h2 .replan{margin-left:auto;padding:5px 10px;font-size:12px}
+#toast .tbtn{margin-left:12px;border:0;background:transparent;color:#9FC2FF;font-weight:650;padding:0}
+.pane h2 small.behind{color:var(--now)}
+.row.late .time{color:var(--now)}
+.pane h2 small{font-weight:500;color:var(--muted);font-size:12px}
+.notice{border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:10px}
+.notice.bad{background:var(--badbg);color:var(--bad)}
+.notice.info{background:var(--bluebg);color:var(--blue)}
+.btn{border:1px solid #D5DAE2;background:#FFFFFF;border-radius:9px;padding:7px 12px;font-size:13px;font-weight:550}
+.btn.dark{background:var(--ink);border-color:var(--ink);color:#FFFFFF}
+.list{display:flex;flex-direction:column;gap:6px;min-height:60px;border-radius:12px}
+.row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 8px 6px 0;min-height:56px;position:relative}
+.row.tmp{border-style:dashed;border-color:#C6CCD6;background:#FCFCFD}
+.row.done{background:#F1F3F5}
+.row.done .title{color:var(--muted);text-decoration:line-through}
+.row.now{border-color:#F0B48E;box-shadow:inset 3px 0 0 var(--now)}
+.row.ghostsrc{opacity:.35}
+.row{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.row .title{-webkit-user-select:none;user-select:none}
+.row.pressing{transform:scale(.985);transition:transform .25s ease;box-shadow:0 0 0 2px #C9D3F0}
+.grip{width:34px;align-self:stretch;flex-shrink:0;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:grab;color:#9AA1AD;border:0;background:transparent;padding:0}
+.n{width:24px;height:24px;flex-shrink:0;border-radius:50%;background:var(--line2);color:var(--soft);font-size:12px;font-weight:650;display:flex;align-items:center;justify-content:center}
+.row.done .n{background:transparent}
+.tick{width:26px;height:26px;flex-shrink:0;border-radius:50%;border:2px solid #9AA1AD;background:#FFFFFF;padding:0;display:flex;align-items:center;justify-content:center}
+.tick.p1{border-color:#D1453B}.tick.p2{border-color:#EB8909}.tick.p3{border-color:#246FE0}
+.tick.on{background:var(--ok);border-color:var(--ok);color:#FFFFFF}
+.body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.title{font-weight:550;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.meta{font-size:12px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.meta .od{color:var(--bad)}
+.tag{font-size:11px;font-weight:600;border-radius:5px;padding:0 5px;background:var(--line2);color:var(--soft)}
+.right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.time{font-size:12px;color:var(--soft);font-weight:550}
+.pill{border:1px solid #C9D3F0;background:var(--bluebg);color:var(--blue);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:650;white-space:nowrap;touch-action:none;cursor:ew-resize;user-select:none;-webkit-user-select:none}
+.pill.scrub{background:var(--blue);color:#FFFFFF;border-color:var(--blue)}
+.row.done .pill{background:transparent;border-color:var(--line);color:var(--muted)}
+.x{border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;padding:4px 6px}
+.add{border:1px solid var(--line);background:#FFFFFF;border-radius:8px;width:34px;height:30px;font-size:18px;line-height:1;padding:0;color:var(--soft)}
+.gap{font-size:12px;color:var(--muted);text-align:center;padding:2px 0;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);margin:2px 34px}
+.empty{border:1px dashed #C9CFD9;border-radius:12px;padding:22px;text-align:center;color:var(--soft);font-size:13px;background:#FFFFFF}
+.droptarget{outline:2px dashed #9FB3EC;outline-offset:3px}
+.line{height:3px;border-radius:2px;background:var(--blue);margin:-4px 0;position:relative;z-index:2}
+.tmpadd{display:flex;gap:6px;margin-top:10px}
+.tmpadd input{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:#FFFFFF}
+.tmpadd select{border:1px solid var(--line);border-radius:9px;padding:0 6px;background:#FFFFFF}
+.sub{display:flex;align-items:center;gap:8px;margin:16px 2px 8px;font-size:12px;font-weight:650;color:var(--soft);text-transform:uppercase;letter-spacing:.04em}
+.sub button{border:0;background:transparent;padding:0;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;display:flex;gap:6px;align-items:center}
+.sub svg{transition:transform .15s}.sub .open svg{transform:rotate(90deg)}
+.hint{font-size:12px;color:var(--muted);margin:10px 2px 0}
+.ghost{position:fixed;left:0;top:0;z-index:50;pointer-events:none;box-shadow:0 14px 30px rgba(27,31,42,.22);opacity:.96}
+.menu{position:fixed;z-index:60;background:#FFFFFF;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(27,31,42,.18);padding:6px;display:grid;grid-template-columns:repeat(4,auto);gap:4px}
+.menu button{border:1px solid var(--line);background:#FFFFFF;border-radius:8px;padding:7px 9px;font-size:13px;font-weight:550}
+.menu button.on{background:var(--blue);border-color:var(--blue);color:#FFFFFF}
+#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:70}
+#toast div{background:var(--ink);color:#FFFFFF;border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:88vw}
+.foot{max-width:1180px;margin:0 auto;padding:0 16px 24px;color:var(--muted);font-size:11px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="topin">
+    <h1>Today</h1><span class="date" id="date"></span>
+    <span class="sum num" id="sum"></span>
+    <button class="icon" data-act="refresh" aria-label="Refresh from Todoist" title="Refresh from Todoist"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg></button>
+    <button class="icon" data-act="status" aria-label="Connection status" title="Connection status"><span class="dot" id="statusdot"></span></button>
+  </div>
+  <div class="bar"><i id="bar" style="width:0"></i></div>
+</header>
+<main class="wrap">
+  <section class="pane listpane" aria-label="Today list"><h2>Today list <small id="listsum"></small><button class="btn replan" data-act="replan" title="Line up every unfinished task back to back, starting now, in the current order">Replan from now</button></h2><div id="notice"></div><div id="list" class="list"></div>
+    <form class="tmpadd" data-form="tmp"><input name="title" placeholder="Add a temp task (dog walk, wash floor)" aria-label="Temp task name" autocomplete="off"><select name="min" aria-label="How long">
+      <option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option><option value="90">1 h 30</option></select><button class="btn" type="submit">Add</button></form>
+    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drag the time pill left or right to change how long, or tap it to choose. Temp tasks stay here and never go to Todoist.</p>
+  </section>
+  <section class="pane bkpane" aria-label="All day"><h2>All day <small id="bksum"></small></h2><div id="backlog"></div>
+    <p class="hint">Drag a task into the Today list (press and hold on a phone), or press +, to give it a time. Drag one back here to take its time off.</p>
+  </section>
+</main>
+<div class="foot" id="ver"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="menu"></div>
+<script>
+(function () {
+  'use strict';
+  var VERSION = 'Docket v3.0 · 6 November 2026';
+  var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
+  var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
+  var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
+  var CARET = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var PRESETS = [15, 30, 45, 60, 90, 120, 180, 240];
+
+  var S = {
+    date: todayISO(), tasks: [], projects: {}, local: { temps: [], done: [] },
+    loaded: false, loading: false, loadedAt: 0, error: null,
+    todoist: { state: 'checking', msg: '' }, store: { state: 'checking', msg: '' },
+    overdueOpen: false,
+    pend: {}, pendDone: {}
+  };
+  var PEND_MS = 180000;
+  /* Changes sent to Todoist but not yet seen in a read: keep showing them,
+     so a refresh mid-write cannot put the old times back on screen. */
+  function applyPending(list) {
+    var now = Date.now();
+    Object.keys(S.pendDone).forEach(function (id) { if (now - S.pendDone[id] > PEND_MS) delete S.pendDone[id]; });
+    list = list.filter(function (t) { return !S.pendDone[t.id]; });
+    list.forEach(function (t) {
+      var p = S.pend[t.id]; if (!p) return;
+      var confirmed = t.dueDate === p.dueDate && (!p.duration || parseDuration(t.duration) === parseDuration(p.duration));
+      if (confirmed || now - p.at > PEND_MS) { delete S.pend[t.id]; return; }
+      t.dueDate = p.dueDate; if (p.duration) t.duration = p.duration;
+    });
+    return list;
+  }
+  function withTimeout(promise, ms) {
+    return Promise.race([promise, new Promise(function (res, rej) { setTimeout(function () { rej({ code: 'timeout' }); }, ms); })]);
+  }
+  var saveTimer = null, suppressClickUntil = 0, lp = null, toastTimer = null, drag = null, scrub = null;
+
+  /* ---------- helpers ---------- */
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function genId() { return 't' + Math.random().toString(36).slice(2, 10); }
+  function todayISO() { return new Intl.DateTimeFormat('en-CA', { timeZone: LDN, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+  function nowMin() {
+    var h = 0, m = 0;
+    new Intl.DateTimeFormat('en-GB', { timeZone: LDN, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())
+      .forEach(function (p) { if (p.type === 'hour') h = +p.value; if (p.type === 'minute') m = +p.value; });
+    return h * 60 + m;
+  }
+  function fmtDate(iso) { var a = iso.split('-').map(Number); return new Date(Date.UTC(a[0], a[1] - 1, a[2])).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }); }
+  function clock(m) { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  function durLabel(m) { if (m < 60) return m + ' min'; var h = Math.floor(m / 60), r = m % 60; return h + ' h' + (r ? ' ' + String(r).padStart(2, '0') : ''); }
+  function durShort(m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + 'h ' : '') + (r ? r + 'm' : (h ? '' : '0m')); }
+  function todoistDur(m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + 'h' : '') + (r ? r + 'm' : '') || '5m'; }
+  function parseDuration(d) {
+    if (!d) return null;
+    if (typeof d === 'object') return d.unit === 'minute' && d.amount ? +d.amount : null;
+    var s = String(d).toLowerCase(); if (/\d\s*d/.test(s) && !/[hm]/.test(s)) return null;
+    var h = s.match(/(\d+(?:\.\d+)?)\s*h/), m = s.match(/(\d+)\s*m/);
+    var t = Math.round((h ? +h[1] * 60 : 0) + (m ? +m[1] : 0));
+    return t > 0 ? t : null;
+  }
+  function round5(m) { return Math.round(m / 5) * 5; }
+  function toast(msg, action) {
+    var el = document.getElementById('toast');
+    el.innerHTML = '<div>' + esc(msg) + (action ? '<button class="tbtn" data-act="' + action.act + '">' + esc(action.label) + '</button>' : '') + '</div>';
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.innerHTML = ''; }, action ? 9000 : 4500);
+  }
+  function projName(pid) { var p = S.projects[pid]; return p && !p.inboxProject ? p.name : (p ? 'Inbox' : ''); }
+
+  /* ---------- Worker API ---------- */
+  function advice(e) {
+    var code = (e && e.code) || 'error';
+    switch (code) {
+      case 'signin': return 'Your sign-in has expired. Reload the page to sign in again.';
+      case 'offline': return 'No connection. Check your signal and try again.';
+      case 'timeout': return 'Todoist is slow to answer. Try again in a moment.';
+      case 'todoist_auth': return 'Todoist refused the token. The Worker’s TODOIST_TOKEN needs replacing.';
+      case 'not_configured': return 'The Todoist token has not been added to the Worker yet.';
+      default: return 'Todoist problem' + (e && e.message ? ': ' + e.message : '.');
+    }
+  }
+  function api(path, opts) {
+    opts = opts || {};
+    var init = { method: opts.method || 'GET', credentials: 'same-origin', redirect: 'manual', headers: {} };
+    if (opts.body) { init.body = JSON.stringify(opts.body); init.headers['Content-Type'] = 'application/json'; }
+    return withTimeout(fetch(path, init), opts.timeout || 20000).then(function (r) {
+      if (r.type === 'opaqueredirect' || r.status === 401 || r.status === 403 || (r.status >= 300 && r.status < 400)) throw { code: 'signin' };
+      return r.text().then(function (txt) {
+        var body; try { body = JSON.parse(txt); } catch (x) { throw { code: 'signin' }; }
+        if (!r.ok) throw { code: body.error || 'error', message: body.message || ('HTTP ' + r.status) };
+        S.todoist = { state: 'ok', msg: '' };
+        return body;
+      });
+    }).catch(function (e) {
+      if (e instanceof TypeError) e = { code: navigator.onLine === false ? 'offline' : 'signin' };
+      S.todoist = { state: 'error', msg: advice(e) }; renderStatus();
+      throw e;
+    });
+  }
+  function loadProjects() {
+    return api('/api/projects').then(function (p) {
+      (p.projects || []).forEach(function (x) { S.projects[x.id] = x; }); render();
+    }, function () { });
+  }
+  function load() {
+    if (S.loading && !S.stalled) return Promise.resolve();
+    var token = S.loadToken = (S.loadToken || 0) + 1;
+    S.loading = true; S.stalled = false; S.date = todayISO(); renderStatus();
+    clearTimeout(S.stallTimer);
+    S.stallTimer = setTimeout(function () { if (S.loadToken === token && S.loading) { S.stalled = true; render(); } }, 8000);
+    return api('/api/today').then(function (p) {
+      if (S.loadToken !== token) return;
+      S.tasks = applyPending(p.tasks || []); S.error = null; S.loaded = true; S.loadedAt = Date.now();
+    }, function (e) { if (S.loadToken === token) S.error = e; })
+      .then(function () { if (S.loadToken !== token) return; clearTimeout(S.stallTimer); S.loading = false; S.stalled = false; render(); });
+  }
+
+  /* ---------- model ----------
+     The Today list is every task due today at a set time, in time order,
+     plus temp tasks and the tasks ticked off today. All day is every task
+     due today without a time, plus overdue tasks. */
+  function timeOf(t) {
+    var d = t.dueDate || '';
+    if (d.slice(0, 10) !== S.date || d.length < 16) return null;
+    return (+d.slice(11, 13)) * 60 + (+d.slice(14, 16));
+  }
+  function items() {
+    var out = [], seen = {};
+    S.tasks.forEach(function (t) {
+      var st = timeOf(t); if (st == null) return;
+      seen[t.id] = true;
+      var m = parseDuration(t.duration);
+      out.push({ kind: 'td', id: t.id, t: t, title: t.content, start: st, min: m || DEF_MIN, hasDur: !!m, recurring: !!t.recurring, prio: t.priority, pid: t.projectId, done: false });
+    });
+    (S.local.done || []).forEach(function (d) { if (!seen[d.id]) out.push({ kind: 'td', id: d.id, title: d.title, start: d.start, min: d.min, pid: d.pid, prio: d.prio, done: true }); });
+    (S.local.temps || []).forEach(function (x) { out.push({ kind: 'tmp', id: x.id, x: x, title: x.title, start: x.start, min: x.min, done: !!x.done }); });
+    out.sort(function (a, b) { return a.start - b.start || (a.done === b.done ? 0 : a.done ? -1 : 1); });
+    return out;
+  }
+  function backlog() {
+    var today = [], over = [];
+    S.tasks.forEach(function (t) {
+      if (timeOf(t) != null) return;
+      var d = (t.dueDate || '').slice(0, 10);
+      if (d === S.date) today.push(t); else if (d && d < S.date) over.push(t);
+    });
+    var pr = function (t) { return { p1: 1, p2: 2, p3: 3 }[t.priority] || 4; };
+    today.sort(function (a, b) { return pr(a) - pr(b); });
+    over.sort(function (a, b) { return pr(a) - pr(b) || String(b.dueDate).localeCompare(String(a.dueDate)); });
+    return { today: today, over: over };
+  }
+  function defaultStart() { var n = Math.ceil(nowMin() / 15) * 15; return Math.max(DAY_START, n); }
+
+  /* Put an entry at position `index` of the list (the list without it):
+     it starts where the entry before it ends, and later entries move down
+     only as far as they must to stop overlapping. */
+  function place(entry, index) {
+    var list = items().filter(function (x) { return x.id !== entry.id; });
+    var prev = null;
+    for (var i = index - 1; i >= 0; i--) { prev = list[i]; break; }
+    var next = list[index] || null;
+    var start;
+    if (prev) start = prev.start + prev.min;
+    else if (next) start = Math.max(0, next.start - entry.min);
+    else start = defaultStart();
+    entry.start = start;
+    var changes = {}; changes[entry.id] = entry;
+    var cur = start + entry.min;
+    for (var j = index; j < list.length; j++) {
+      var it = list[j];
+      if (it.done) continue;
+      if (it.start < cur) { it.start = cur; changes[it.id] = it; }
+      cur = Math.max(cur, it.start + it.min);
+    }
+    return commit(changes);
+  }
+  function resize(id, min) {
+    var list = items(), idx = -1;
+    list.forEach(function (x, i) { if (x.id === id) idx = i; });
+    if (idx < 0) return;
+    var it = list[idx]; it.min = min; it.durChanged = true;
+    var changes = {}; changes[id] = it;
+    var cur = it.start + min;
+    for (var j = idx + 1; j < list.length; j++) {
+      var o = list[j]; if (o.done) continue;
+      if (o.start < cur) { o.start = cur; changes[o.id] = o; }
+      cur = Math.max(cur, o.start + o.min);
+    }
+    return commit(changes);
+  }
+  /* Apply changes locally at once, then write Todoist tasks in one call. */
+  function commit(changes) {
+    var writes = [];
+    Object.keys(changes).forEach(function (id) {
+      var c = changes[id];
+      if (c.kind === 'tmp') {
+        var x = S.local.temps.filter(function (y) { return y.id === id; })[0];
+        if (x) { x.start = c.start; x.min = c.min; }
+        return;
+      }
+      if (c.done) return;
+      var t = c.t || S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
+      var before = { dueDate: t.dueDate, duration: t.duration };
+      t.dueDate = S.date + 'T' + clock(c.start) + ':00';
+      var w = { id: id, date: t.dueDate };
+      if (c.durChanged || !c.hasDur || c.fromBacklog) { t.duration = todoistDur(c.min); w.duration = t.duration; }
+      S.pend[id] = { dueDate: t.dueDate, duration: w.duration || null, at: Date.now() };
+      writes.push({ w: w, t: t, before: before });
+    });
+    saveLocal(); render();
+    if (!writes.length) return Promise.resolve();
+    var body = { changes: writes.map(function (x) { return { id: x.w.id, date: x.w.date, durationMin: x.w.duration ? parseDuration(x.w.duration) : null, recurring: !!x.t.recurring, string: x.t.dueString || '' }; }) };
+    function revert(x) { delete S.pend[x.w.id]; x.t.dueDate = x.before.dueDate; x.t.duration = x.before.duration; }
+    return api('/api/update', { method: 'POST', body: body, timeout: 25000 }).then(function (r) {
+      var bad = {}; ((r && r.failures) || []).forEach(function (f) { bad[f.id] = f.error || true; });
+      var n = 0; writes.forEach(function (x) { if (bad[x.w.id]) { n++; revert(x); } });
+      render();
+      if (n) toast(n + (n === 1 ? ' task wasn’t' : ' tasks weren’t') + ' changed in Todoist.');
+    }, function (e) {
+      if (e && e.code === 'timeout') { toast('Todoist is slow to confirm. Checking again shortly.'); setTimeout(load, 10000); return; }
+      writes.forEach(revert); render(); toast('Not changed in Todoist. ' + advice(e));
+    });
+  }
+  /* Replan from now: every unfinished task, in its current order, back to
+     back from the next five-minute mark. Gaps close up; ticked-off tasks
+     stay where they were. Undo puts the old times back. */
+  var lastReplan = null;
+  function replanFromNow() {
+    if (!S.loaded) { toast(S.loading ? 'Still loading from Todoist. Try again once your tasks appear.' : 'Todoist isn’t loaded, so times can’t be changed yet.'); return; }
+    var open = items().filter(function (x) { return !x.done; });
+    if (!open.length) { toast('Nothing left to replan.'); return; }
+    var cur = Math.ceil(nowMin() / 5) * 5, changes = {}, undo = {};
+    open.forEach(function (it) {
+      if (it.start !== cur) { undo[it.id] = { start: it.start, kind: it.kind }; it.start = cur; changes[it.id] = it; }
+      cur += it.min;
+    });
+    var n = Object.keys(changes).length;
+    if (!n) { toast('Already lined up from now.'); return; }
+    lastReplan = undo;
+    var btn = document.querySelector('[data-act="replan"]'); if (btn) { btn.disabled = true; btn.textContent = 'Replanning…'; }
+    commit(changes).then(function () { var b = document.querySelector('[data-act="replan"]'); if (b) { b.disabled = false; b.textContent = 'Replan from now'; } });
+    toast(n + (n === 1 ? ' task' : ' tasks') + ' moved. Starts ' + clock(open[0].start) + ', ends ' + clock(cur) + (cur >= 1440 ? ' tomorrow' : '') + '.', { act: 'undo-replan', label: 'Undo' });
+  }
+  function undoReplan() {
+    var undo = lastReplan; lastReplan = null; if (!undo) return;
+    var changes = {};
+    items().forEach(function (it) { if (undo[it.id] && !it.done) { it.start = undo[it.id].start; changes[it.id] = it; } });
+    commit(changes);
+    document.getElementById('toast').innerHTML = '';
+    toast('Times put back.');
+  }
+  function addFromBacklog(id, index) {
+    var t = S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
+    var m = parseDuration(t.duration);
+    var entry = { kind: 'td', id: id, t: t, title: t.content, min: m || DEF_MIN, hasDur: !!m, fromBacklog: true, start: 0 };
+    if (index == null) index = items().filter(function (x) { return x.id !== id; }).length;
+    place(entry, index);
+  }
+  function unschedule(id) {
+    var t = S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
+    if (t.recurring) { toast('“' + t.content + '” repeats, so its time can only be removed in Todoist.'); render(); return; }
+    var before = t.dueDate;
+    t.dueDate = S.date; S.pend[id] = { dueDate: S.date, duration: null, at: Date.now() }; render();
+    api('/api/unschedule', { method: 'POST', body: { id: id, date: S.date } }).then(function (r) { if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error }; }).catch(function (e) { delete S.pend[id]; t.dueDate = before; render(); toast('Not changed in Todoist. ' + advice(e)); });
+  }
+  function tick(id) {
+    var it = items().filter(function (x) { return x.id === id; })[0];
+    var bl = !it && S.tasks.filter(function (y) { return y.id === id; })[0];
+    if (it && it.kind === 'tmp') { it.x.done = !it.x.done; saveLocal(); render(); return; }
+    if (it && it.done) {
+      S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
+      api('/api/reopen', { method: 'POST', body: { ids: [id] } }).then(function () { load(); }, function (e) { toast('Not reopened in Todoist. ' + advice(e)); });
+      return;
+    }
+    var t = it ? it.t : bl; if (!t) return;
+    S.tasks = S.tasks.filter(function (y) { return y.id !== id; });
+    S.pendDone[id] = Date.now();
+    if (it) S.local.done.push({ id: id, title: it.title, start: it.start, min: it.min, pid: it.pid, prio: it.prio });
+    saveLocal(); render();
+    api('/api/complete', { method: 'POST', body: { ids: [id] } }).then(function (r) { if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error }; }).catch(function (e) {
+      delete S.pendDone[id]; S.tasks.push(t); S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
+      toast('Not completed in Todoist. ' + advice(e));
+    });
+  }
+
+  /* ---------- local storage (temp tasks and today's ticked-off tasks) ---------- */
+  function loadLocal() {
+    var date = S.date;
+    return api('/api/local?date=' + date).then(function (d) {
+      if (date !== S.date) return;
+      S.local = { temps: d.temps || [], done: d.done || [] };
+      S.store = { state: 'ok', msg: '' };
+    }, function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be loaded. ' + advice(e) }; }).then(render);
+  }
+  function saveLocal() {
+    clearTimeout(saveTimer);
+    var date = S.date;
+    saveTimer = setTimeout(function () {
+      api('/api/local?date=' + date, { method: 'PUT', body: { temps: S.local.temps, done: S.local.done } })
+        .then(function () { S.store = { state: 'ok', msg: '' }; renderStatus(); },
+          function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be saved. ' + advice(e) }; renderStatus(); toast('Couldn’t save temp tasks.'); });
+    }, 400);
+  }
+
+  /* ---------- rendering ---------- */
+  function rowHtml(it, i, now) {
+    var isNow = !it.done && now >= it.start && now < it.start + it.min;
+    var isLate = !it.done && it.start + it.min <= now;
+    var meta = [];
+    if (it.kind === 'tmp') meta.push('<span class="tag">Temp</span>');
+    else if (projName(it.pid)) meta.push('<span>' + esc(projName(it.pid)) + '</span>');
+    if (it.recurring) meta.push('<span>Repeats</span>');
+    return '<div class="row' + (it.kind === 'tmp' ? ' tmp' : '') + (it.done ? ' done' : '') + (isNow ? ' now' : '') + (isLate ? ' late' : '') + '" data-row="' + esc(it.id) + '" data-kind="' + it.kind + '">' +
+      '<button class="grip" data-grip="list" data-id="' + esc(it.id) + '" aria-label="Drag to reorder ' + esc(it.title) + '">' + GRIP + '</button>' +
+      '<span class="n num">' + (i + 1) + '</span>' +
+      '<button class="tick ' + esc(it.prio || '') + (it.done ? ' on' : '') + '" data-act="tick" data-id="' + esc(it.id) + '" aria-label="' + (it.done ? 'Mark not done: ' : 'Mark done: ') + esc(it.title) + '">' + (it.done ? CHECK : '') + '</button>' +
+      '<div class="body"><span class="title">' + esc(it.title) + '</span>' + (meta.length ? '<span class="meta">' + meta.join(' · ') + '</span>' : '') + '</div>' +
+      '<div class="right"><span class="time num">' + clock(it.start) + '–' + clock(it.start + it.min) + '</span>' +
+      '<span class="pill num" data-pill="' + esc(it.id) + '" role="button" tabindex="0" aria-label="Duration ' + durLabel(it.min) + '. Drag sideways or tap to change.">' + durLabel(it.min) + '</span></div>' +
+      (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' : '') +
+      '</div>';
+  }
+  function bkHtml(t) {
+    var m = parseDuration(t.duration), d = (t.dueDate || '').slice(0, 10), od = d && d < S.date;
+    var meta = [];
+    if (projName(t.projectId)) meta.push('<span>' + esc(projName(t.projectId)) + '</span>');
+    if (od) meta.push('<span class="od">' + esc(fmtDate(d)) + '</span>');
+    if (m) meta.push('<span>' + durLabel(m) + '</span>');
+    if (t.recurring) meta.push('<span>Repeats</span>');
+    return '<div class="row" data-bk="' + esc(t.id) + '">' +
+      '<button class="grip" data-grip="bk" data-id="' + esc(t.id) + '" aria-label="Drag into the Today list: ' + esc(t.content) + '">' + GRIP + '</button>' +
+      '<button class="tick ' + esc(t.priority || '') + '" data-act="tick" data-id="' + esc(t.id) + '" aria-label="Mark done: ' + esc(t.content) + '"></button>' +
+      '<div class="body"><span class="title">' + esc(t.content) + '</span>' + (meta.length ? '<span class="meta">' + meta.join(' · ') + '</span>' : '') + '</div>' +
+      '<button class="add" data-act="add" data-id="' + esc(t.id) + '" aria-label="Add to the end of the Today list: ' + esc(t.content) + '">+</button></div>';
+  }
+  function render() {
+    if (drag || scrub) return;
+    document.getElementById('date').textContent = fmtDate(S.date);
+    var notice = '';
+    if (S.error && !S.loading && S.error.code === 'signin') notice = '<div class="notice bad">' + esc(advice(S.error)) + ' <button class="btn dark" data-act="reload">Reload</button></div>';
+    else if (S.error && !S.loading) notice = '<div class="notice bad">' + esc(advice(S.error)) + ' <button class="btn" data-act="refresh">Try again</button></div>';
+    if (S.stalled) notice += '<div class="notice info">Still waiting for Todoist. <button class="btn" data-act="refresh">Try again</button></div>';
+    if (S.store.state === 'error') notice += '<div class="notice bad">' + esc(S.store.msg) + '</div>';
+    document.getElementById('notice').innerHTML = notice;
+
+    var list = items(), now = nowMin(), html = '';
+    if (!S.loaded) html = '<div class="empty">' + (S.loading ? 'Loading today from Todoist…' : 'Not loaded yet.') + '</div>';
+    else if (!list.length) html = '<div class="empty" data-droplist>Nothing has a time yet today. Drag tasks in from All day.</div>';
+    else list.forEach(function (it, i) {
+      if (i > 0) {
+        var p = list[i - 1], gap = it.start - (p.start + p.min);
+        if (gap >= 15) html += '<div class="gap num">' + durShort(gap) + ' free</div>';
+      }
+      html += rowHtml(it, i, now);
+    });
+    document.getElementById('list').innerHTML = html;
+
+    /* What is left, not what was planned: unfinished time, and the
+       earliest finish if you worked straight through from now. */
+    var open = list.filter(function (x) { return !x.done; });
+    var left = open.reduce(function (a, x) { return a + x.min; }, 0);
+    var doneN = list.length - open.length;
+    var planEnd = open.length ? Math.max.apply(null, open.map(function (x) { return x.start + x.min; })) : null;
+    var soonest = open.length ? now + left : null;
+    var late = open.filter(function (x) { return x.start < now - 5; }).length;
+    var finish = planEnd == null ? null : Math.max(planEnd, soonest);
+    var sumTxt = !list.length ? '' : !open.length ? 'All ' + list.length + ' done' :
+      doneN + ' of ' + list.length + ' done · ' + durShort(left) + ' left · ends ' + clock(finish) + (finish >= 1440 ? ' tomorrow' : '') +
+      (soonest > planEnd ? ' at the earliest' : '');
+    document.getElementById('sum').textContent = sumTxt;
+    var ls = document.getElementById('listsum');
+    ls.textContent = open.length ? durShort(left) + ' left · ends ' + clock(finish) + (late ? ' · ' + late + ' behind' : '') : '';
+    ls.className = soonest > planEnd || late ? 'behind' : '';
+    document.getElementById('bar').style.width = (list.length ? Math.round(doneN / list.length * 100) : 0) + '%';
+
+    var bk = backlog(), bh = '';
+    if (S.loaded) {
+      bh += '<div class="list" data-dropbk>' + (bk.today.length ? bk.today.map(bkHtml).join('') : '<div class="empty">Nothing else due today.</div>') + '</div>';
+      if (bk.over.length) {
+        bh += '<div class="sub"><button class="' + (S.overdueOpen ? 'open' : '') + '" data-act="overdue" aria-expanded="' + S.overdueOpen + '">' + CARET + 'Overdue · ' + bk.over.length + '</button></div>';
+        if (S.overdueOpen) bh += '<div class="list">' + bk.over.map(bkHtml).join('') + '</div>';
+      }
+    }
+    document.getElementById('backlog').innerHTML = bh;
+    document.getElementById('bksum').textContent = S.loaded ? bk.today.length + ' today' + (bk.over.length ? ' · ' + bk.over.length + ' overdue' : '') : '';
+    renderStatus();
+  }
+  function renderStatus() {
+    var d = document.getElementById('statusdot');
+    d.className = 'dot ' + (S.loading || S.todoist.state === 'checking' ? 'wait' : (S.todoist.state === 'ok' && S.store.state !== 'error' ? 'ok' : 'err'));
+  }
+
+  /* ---------- duration pill: drag sideways, or tap for presets ---------- */
+  function openMenu(id, anchor) {
+    var it = items().filter(function (x) { return x.id === id; })[0]; if (!it) return;
+    var r = anchor.getBoundingClientRect();
+    var el = document.getElementById('menu');
+    el.innerHTML = '<div class="menu" role="menu" style="top:' + Math.min(r.bottom + 6, window.innerHeight - 110) + 'px;left:' + Math.max(8, Math.min(r.right - 250, window.innerWidth - 258)) + 'px">' +
+      PRESETS.map(function (m) { return '<button role="menuitem" class="' + (m === it.min ? 'on' : '') + '" data-act="setdur" data-id="' + esc(id) + '" data-min="' + m + '">' + durLabel(m) + '</button>'; }).join('') + '</div>';
+  }
+  function closeMenu() { document.getElementById('menu').innerHTML = ''; }
+
+  /* ---------- pointer drag: reorder, schedule, unschedule ---------- */
+  function clearMarks() {
+    document.querySelectorAll('.line').forEach(function (n) { n.remove(); });
+    document.querySelectorAll('.droptarget').forEach(function (n) { n.classList.remove('droptarget'); });
+  }
+  function targetAt(x, y) {
+    var el = document.elementFromPoint(x, y); if (!el) return null;
+    var listEl = document.getElementById('list'), bkEl = document.getElementById('backlog');
+    var rows = Array.prototype.slice.call(listEl.querySelectorAll('[data-row]')).filter(function (r) { return r.getAttribute('data-row') !== drag.id; });
+    if (listEl.contains(el) || el.closest('.tmpadd') || (el.closest('[aria-label="Today list"]'))) {
+      var idx = rows.length;
+      for (var i = 0; i < rows.length; i++) { var b = rows[i].getBoundingClientRect(); if (y < b.top + b.height / 2) { idx = i; break; } }
+      return { zone: 'list', index: idx, rows: rows };
+    }
+    if (bkEl.contains(el) || el.closest('[aria-label="All day"]')) return { zone: 'bk' };
+    return null;
+  }
+  function markTarget(tg) {
+    clearMarks(); if (!tg) return;
+    if (tg.zone === 'list') {
+      var line = document.createElement('div'); line.className = 'line';
+      var listEl = document.getElementById('list');
+      if (!tg.rows.length) { listEl.classList.add('droptarget'); return; }
+      if (tg.index < tg.rows.length) listEl.insertBefore(line, tg.rows[tg.index]);
+      else tg.rows[tg.rows.length - 1].after(line);
+    } else if (drag.src === 'list' && drag.kind === 'td') document.getElementById('backlog').classList.add('droptarget');
+  }
+  document.addEventListener('pointerdown', function (e) {
+    var pill = e.target.closest && e.target.closest('[data-pill]');
+    if (pill) {
+      var it = items().filter(function (x) { return x.id === pill.getAttribute('data-pill'); })[0];
+      if (!it) return;
+      e.preventDefault();
+      try { pill.setPointerCapture(e.pointerId); } catch (x) { }
+      scrub = { id: it.id, el: pill, x0: e.clientX, orig: it.min, min: it.min, moved: false, pointerId: e.pointerId, done: it.done };
+      return;
+    }
+    var g = e.target.closest && e.target.closest('[data-grip]');
+    if (!g) {
+      /* Phone: press and hold anywhere on a task (not its buttons), then drag. */
+      var lrow = e.target.closest && e.target.closest('.row');
+      if (!lrow || e.pointerType === 'mouse' || !S.loaded || e.target.closest('button,input,select,[data-pill]')) return;
+      var lid = lrow.getAttribute('data-row') || lrow.getAttribute('data-bk');
+      if (!lid) return;
+      var cancelLp = function () { if (lp) { clearTimeout(lp.timer); clearTimeout(lp.pressTimer); lp.row.classList.remove('pressing'); lp = null; } };
+      cancelLp();
+      lp = { id: lid, src: lrow.hasAttribute('data-row') ? 'list' : 'bk', row: lrow, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, cancel: cancelLp };
+      lp.pressTimer = setTimeout(function () { if (lp) lp.row.classList.add('pressing'); }, 150);
+      lp.timer = setTimeout(function () {
+        var L = lp; if (!L) return;
+        clearTimeout(L.pressTimer); L.row.classList.remove('pressing'); lp = null;
+        var b = L.row.getBoundingClientRect();
+        drag = { id: L.id, src: L.src, kind: L.row.getAttribute('data-kind') || 'td', row: L.row, pointerId: L.pointerId, dx: L.x - b.left, dy: L.y - b.top, x0: L.x, y0: L.y, started: true, ghost: null, w: b.width, target: null };
+        var gh = L.row.cloneNode(true); gh.classList.add('ghost'); gh.style.width = b.width + 'px';
+        gh.style.transform = 'translate(' + b.left + 'px,' + b.top + 'px)';
+        document.body.appendChild(gh); drag.ghost = gh; L.row.classList.add('ghostsrc');
+        try { L.row.setPointerCapture(L.pointerId); } catch (x) { }
+        if (navigator.vibrate) { try { navigator.vibrate(12); } catch (x) { } }
+      }, 420);
+      return;
+    }
+    if (!S.loaded) { toast('Still loading from Todoist.'); return; }
+    e.preventDefault();
+    var row = g.closest('.row');
+    var src = g.getAttribute('data-grip'), id = g.getAttribute('data-id');
+    var b = row.getBoundingClientRect();
+    drag = { id: id, src: src, kind: row.getAttribute('data-kind') || 'td', row: row, pointerId: e.pointerId, dx: e.clientX - b.left, dy: e.clientY - b.top, x0: e.clientX, y0: e.clientY, started: false, ghost: null, w: b.width, target: null };
+    try { g.setPointerCapture(e.pointerId); } catch (x) { }
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (scrub && e.pointerId === scrub.pointerId) {
+      var dx = e.clientX - scrub.x0;
+      if (Math.abs(dx) > 6) scrub.moved = true;
+      if (!scrub.moved) return;
+      scrub.min = Math.max(5, Math.min(480, scrub.orig + Math.round(dx / 10) * 5));
+      scrub.el.classList.add('scrub'); scrub.el.textContent = durLabel(scrub.min);
+      return;
+    }
+    if (lp && e.pointerId === lp.pointerId) {
+      lp.x = e.clientX; lp.y = e.clientY;
+      if (Math.abs(e.clientX - lp.x0) + Math.abs(e.clientY - lp.y0) > 10) lp.cancel();
+      return;
+    }
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    if (!drag.started) {
+      if (Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) < 5) return;
+      drag.started = true;
+      var gh = drag.row.cloneNode(true); gh.classList.add('ghost'); gh.style.width = drag.w + 'px';
+      document.body.appendChild(gh); drag.ghost = gh; drag.row.classList.add('ghostsrc');
+    }
+    e.preventDefault();
+    drag.ghost.style.transform = 'translate(' + (e.clientX - drag.dx) + 'px,' + (e.clientY - drag.dy) + 'px)';
+    if (e.clientY < 80) window.scrollBy(0, -12); else if (e.clientY > window.innerHeight - 60) window.scrollBy(0, 12);
+    drag.target = targetAt(e.clientX, e.clientY);
+    markTarget(drag.target);
+  });
+  function endPointer(e, cancelled) {
+    if (scrub && (!e || e.pointerId === scrub.pointerId)) {
+      var s = scrub; scrub = null;
+      if (cancelled) { render(); return; }
+      if (!s.moved) { render(); if (!s.done) openMenu(s.id, document.querySelector('[data-pill="' + s.id + '"]')); return; }
+      if (s.min !== s.orig && !s.done) resize(s.id, s.min); else render();
+      return;
+    }
+    if (lp && (!e || e.pointerId === lp.pointerId)) { lp.cancel(); return; }
+    if (!drag || (e && e.pointerId !== drag.pointerId)) return;
+    var d = drag; drag = null;
+    if (d.started) suppressClickUntil = Date.now() + 450;
+    if (d.ghost) d.ghost.remove();
+    clearMarks();
+    if (!d.started || cancelled || !d.target) { render(); return; }
+    var tg = d.target;
+    if (d.src === 'bk' && tg.zone === 'list') { addFromBacklog(d.id, tg.index); return; }
+    if (d.src === 'list' && tg.zone === 'list') {
+      var it = items().filter(function (x) { return x.id === d.id; })[0];
+      if (!it || it.done) { render(); return; }
+      it.durChanged = false;
+      place(it, tg.index); return;
+    }
+    if (d.src === 'list' && tg.zone === 'bk') {
+      if (d.kind === 'tmp') { toast('Temp tasks stay in the Today list. Use × to remove one.'); render(); return; }
+      unschedule(d.id); return;
+    }
+    render();
+  }
+  document.addEventListener('pointerup', function (e) { endPointer(e, false); });
+  document.addEventListener('pointercancel', function (e) { endPointer(e, true); });
+
+  /* ---------- clicks and forms ---------- */
+  /* While a task is being dragged, stop the page scrolling under the finger. */
+  document.addEventListener('touchmove', function (e) { if (drag && drag.started) e.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', function (e) { if (e.target.closest && e.target.closest('.row')) e.preventDefault(); });
+  document.addEventListener('click', function (e) {
+    if (Date.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); return; }
+    var el = e.target.closest('[data-act]');
+    if (!e.target.closest('.menu')) closeMenu();
+    if (!el) return;
+    var act = el.getAttribute('data-act'), id = el.getAttribute('data-id');
+    switch (act) {
+      case 'refresh': load(); loadLocal(); break;
+      case 'reload': location.reload(); break;
+      case 'status': toast(S.todoist.state === 'ok' ? 'Todoist connected' + (S.store.state === 'ok' ? '. Temp tasks are saving.' : '. ' + S.store.msg) + ' ' + VERSION : (S.todoist.msg || 'Checking Todoist…')); break;
+      case 'tick': tick(id); break;
+      case 'add': addFromBacklog(id, null); break;
+      case 'replan': replanFromNow(); break;
+      case 'undo-replan': undoReplan(); break;
+      case 'overdue': S.overdueOpen = !S.overdueOpen; render(); break;
+      case 'setdur': closeMenu(); resize(id, +el.getAttribute('data-min')); break;
+      case 'deltmp': S.local.temps = S.local.temps.filter(function (x) { return x.id !== id; }); saveLocal(); render(); break;
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    var p = e.target.closest && e.target.closest('[data-pill]');
+    if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openMenu(p.getAttribute('data-pill'), p); }
+    if (e.key === 'Escape') closeMenu();
+  });
+  document.addEventListener('submit', function (e) {
+    var f = e.target.closest('[data-form="tmp"]'); if (!f) return;
+    e.preventDefault();
+    var title = f.title.value.trim(); if (!title) return;
+    var x = { id: genId(), title: title, min: +f.min.value || 30, start: 0, done: false };
+    S.local.temps.push(x);
+    var n = items().filter(function (y) { return y.id !== x.id; }).length;
+    place({ kind: 'tmp', id: x.id, x: x, title: title, min: x.min, start: 0 }, n);
+    f.title.value = '';
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && Date.now() - S.loadedAt > 30000) { var nd = todayISO() !== S.date; load(); if (nd) loadLocal(); }
+  });
+
+  /* ---------- start ---------- */
+  document.getElementById('ver').textContent = VERSION;
+  S.todoist = { state: 'checking', msg: '' };
+  render();
+  S.date = todayISO();
+  loadLocal(); loadProjects(); load();
+  setInterval(function () { if (!drag && !scrub && document.visibilityState === 'visible') { if (todayISO() !== S.date) { load(); loadLocal(); } else if (Date.now() - S.loadedAt > 120000) load(); else render(); } }, 60000);
+})();
+</script>
+</body>
+</html>
