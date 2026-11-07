@@ -167,7 +167,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.3 · 7 November 2026';
+  var VERSION = 'Docket v3.3.1 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -326,6 +326,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     S.loading = true; S.stalled = false; S.date = todayISO(); renderStatus();
     clearTimeout(S.stallTimer);
     S.stallTimer = setTimeout(function () { if (S.loadToken === token && S.loading) { S.stalled = true; render(); } }, 8000);
+    if (!Object.keys(S.projects).length) loadProjects();
     return Promise.all([api('/api/today'), api('/api/next')]).then(function (r) {
       if (S.loadToken !== token) return;
       S.tasks = applyPending(r[0].tasks || []);
@@ -524,9 +525,16 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
       /* A short-lived way back. Repeating tasks have already moved on, so no undo for those. */
       if (!t.recurring) toast('Done: “' + t.content + '”.', { act: 'undo-tick', label: 'Undo', id: id }, UNDO_MS);
-      /* A next action is done: ask what comes after it, unless the project already has one. */
-      var p = S.projects[t.projectId];
-      if (hasLabel(t, 'next') && p && !p.inboxProject && !nextOf(t.projectId, id)) openSheet(t.projectId, 'after', t);
+      /* A next action is done: ask what comes after it. Decide on the labels
+         Todoist held at the moment of completing (the Worker sends them back),
+         not on this page's copy, which can be stale on a phone. Whether the
+         project already has another next is checked on fresh data in the sheet. */
+      var fresh = ((r && r.tasks) || []).filter(function (x) { return x.id === id; })[0];
+      var pid = (fresh && fresh.projectId) || t.projectId;
+      var wasNext = fresh ? hasLabel(fresh, 'next') : hasLabel(t, 'next');
+      var p = S.projects[pid];
+      if (!p) loadProjects();
+      if (wasNext && pid && !(p && p.inboxProject)) openSheet(pid, 'after', t);
     }).catch(function (e) {
       delete S.pendDone[id]; if (wasToday) S.tasks.push(t); if (wasNext) S.nexts.push(t); S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
       toast('Not completed in Todoist. ' + advice(e));
@@ -546,24 +554,30 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 
   /* ---------- choosing a project's next action ---------- */
   function openSheet(pid, mode, done) {
-    S.sheet = { pid: pid, mode: mode, done: done || null, loading: true, tasks: [] };
+    /* After a tick the sheet stays hidden until the project's tasks are in,
+       so it never flashes up for a project that turns out to have a next already. */
+    S.sheet = { pid: pid, mode: mode, done: done || null, loading: true, tasks: [], quiet: mode === 'after' };
     renderSheet();
     api('/api/project-tasks?projectId=' + encodeURIComponent(pid)).then(function (r) {
       if (!S.sheet || S.sheet.pid !== pid) return;
       var pr = function (t) { return { p1: 1, p2: 2, p3: 3 }[t.priority] || 4; };
-      S.sheet.tasks = (r.tasks || []).filter(function (t) { return !hasLabel(t, 'proposed') && !hasLabel(t, 'backlog') && !S.pendDone[t.id]; })
+      S.sheet.tasks = (r.tasks || []).filter(function (t) { return !hasLabel(t, 'proposed') && !hasLabel(t, 'backlog') && !S.pendDone[t.id] && !(done && t.id === done.id); })
         .sort(function (a, b) {
           var da = a.dueDate ? a.dueDate.slice(0, 10) : '9999', db = b.dueDate ? b.dueDate.slice(0, 10) : '9999';
           return (hasLabel(b, 'next') - hasLabel(a, 'next')) || (da < db ? -1 : da > db ? 1 : 0) || pr(a) - pr(b) || (a.order || 0) - (b.order || 0);
         });
-      S.sheet.loading = false; renderSheet();
-    }, function (e) { if (S.sheet && S.sheet.pid === pid) { S.sheet.loading = false; S.sheet.error = advice(e); renderSheet(); } });
+      if (S.sheet.mode === 'after') {
+        var still = S.sheet.tasks.filter(function (t) { return hasLabel(t, 'next'); })[0];
+        if (still) { closeSheet(); return; }
+      }
+      S.sheet.loading = false; S.sheet.quiet = false; renderSheet();
+    }, function (e) { if (S.sheet && S.sheet.pid === pid) { S.sheet.loading = false; S.sheet.quiet = false; S.sheet.error = advice(e); renderSheet(); } });
   }
   function closeSheet() { S.sheet = null; renderSheet(); }
   function renderSheet() {
     var el = document.getElementById('sheet'), s = S.sheet;
-    document.body.classList.toggle('sheet-open', !!s);
-    if (!s) { el.innerHTML = ''; return; }
+    document.body.classList.toggle('sheet-open', !!(s && !s.quiet));
+    if (!s || s.quiet) { el.innerHTML = ''; return; }
     var html = '<div class="scrim" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Next action">';
     if (s.mode === 'confirm') {
       html += '<h3>Replace the next action?</h3><p>“' + esc(s.cur.content) + '”' + (s.count > 1 ? ' and ' + (s.count - 1) + ' other' + (s.count > 2 ? 's' : '') + ' are' : ' is') + ' already next for ' + esc(projName(s.pid)) + '.</p>' +
@@ -738,6 +752,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     clearTimeout(saveTimer);
     var date = S.date;
     saveTimer = setTimeout(function () {
+      saveTimer = null;
       api('/api/local?date=' + date, { method: 'PUT', body: { temps: S.local.temps, done: S.local.done, orig: S.local.orig || {} } })
         .then(function () { S.store = { state: 'ok', msg: '' }; renderStatus(); },
           function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be saved. ' + advice(e) }; renderStatus(); toast('Couldn’t save temp tasks.'); });
@@ -783,6 +798,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     if (drag || scrub) return;
     document.getElementById('date').textContent = fmtDate(S.date);
     var notice = '';
+    if (S.newVersion) notice += '<div class="notice info">A newer Docket is ready. <button class="btn dark" data-act="reload">Reload</button></div>';
     if (S.error && !S.loading && S.error.code === 'signin') notice = '<div class="notice bad">' + esc(advice(S.error)) + ' <button class="btn dark" data-act="reload">Reload</button></div>';
     else if (S.error && !S.loading) notice = '<div class="notice bad">' + esc(advice(S.error)) + ' <button class="btn" data-act="refresh">Try again</button></div>';
     if (S.stalled) notice += '<div class="notice info">Still waiting for Todoist. <button class="btn" data-act="refresh">Try again</button></div>';
@@ -1035,8 +1051,24 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     f.title.value = '';
   });
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible' && Date.now() - S.loadedAt > 30000) { var nd = todayISO() !== S.date; load(); if (nd) loadLocal(); }
+    if (document.visibilityState !== 'visible') return;
+    checkVersion();
+    if (Date.now() - S.loadedAt > 30000) { var nd = todayISO() !== S.date; load(); if (nd) loadLocal(); }
   });
+  /* A home-screen app can sit in the background for days still running the
+     page it first loaded, so new features never arrive. On coming back,
+     compare with the page on the server and reload if it has changed. */
+  var versionAt = 0;
+  function checkVersion() {
+    if (Date.now() - versionAt < 60000) return;
+    versionAt = Date.now();
+    fetch('/', { cache: 'no-store', credentials: 'same-origin', redirect: 'manual' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (txt) {
+      var m = txt.match(/var VERSION = '([^']+)'/);
+      if (!m || m[1] === VERSION) return;
+      if (!drag && !scrub && !busy() && !saveTimer) location.reload();
+      else { S.newVersion = m[1]; render(); }
+    }).catch(function () { });
+  }
 
   /* ---------- start ---------- */
   document.getElementById('ver').textContent = VERSION;
@@ -1046,7 +1078,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   loadLocal(); loadProjects(); load();
   /* Never redraw under someone editing a proposal or using the chooser. */
   function busy() { var a = document.activeElement; return !!(S.sheet || (a && a.closest && a.closest('.prop'))); }
-  setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.date) { load(); loadLocal(); } else if (Date.now() - S.loadedAt > 120000) load(); else render(); } }, 60000);
+  setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.date) { load(); loadLocal(); } else if (Date.now() - S.loadedAt > 120000) { load(); checkVersion(); } else render(); } }, 60000);
 })();
 </script>
 </body>

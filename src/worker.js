@@ -100,7 +100,17 @@ async function route(url, request, env) {
   if ((p === '/api/complete' || p === '/api/reopen') && m === 'POST') {
     const body = await request.json();
     const type = p === '/api/complete' ? 'item_close' : 'item_uncomplete';
-    return json(await sync(env, (body.ids || []).map(id => ({ type, uuid: crypto.randomUUID(), args: { id: String(id) }, _id: String(id) }))));
+    const ids = (body.ids || []).map(String);
+    if (ids.some(id => !/^[\w-]+$/.test(id))) return json({ error: 'bad_id' }, 400);
+    /* Read each task as Todoist holds it just before closing it, so the
+       page decides "was this the next action?" on fresh labels, not on a
+       copy that may be minutes old (a phone left open in the background). */
+    const before = type === 'item_close'
+      ? await Promise.all(ids.slice(0, 20).map(id => td(env, '/tasks/' + encodeURIComponent(id)).then(t => ({ id: t.id, projectId: t.project_id, labels: t.labels || [] }), () => null)))
+      : [];
+    const r = await sync(env, ids.map(id => ({ type, uuid: crypto.randomUUID(), args: { id }, _id: id })));
+    r.tasks = before.filter(Boolean);
+    return json(r);
   }
   if (p === '/api/local') {
     const date = url.searchParams.get('date') || '';
