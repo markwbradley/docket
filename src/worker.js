@@ -1,6 +1,8 @@
-/* Docket: a Today list that mirrors Todoist's Today view.
+/* Docket: a day planner over the next seven days, built on Todoist.
    This Worker serves the page and a small API. It talks to Todoist with
-   Mark's API token (secret TODOIST_TOKEN) and keeps temp tasks in KV.
+   Mark's API token (secret TODOIST_TOKEN), keeps temp tasks in KV, and
+   reads Google Calendar appointments from a small Apps Script feed in
+   Mark's Google account (secrets GCAL_URL and GCAL_KEY; see SETUP.md).
    Every request must carry a valid Cloudflare Access sign-in; without the
    Access settings (secrets ACCESS_TEAM_DOMAIN and ACCESS_AUD) it refuses
    everything rather than run open. */
@@ -28,6 +30,9 @@ async function route(url, request, env) {
   const p = url.pathname, m = request.method;
   if (p === '/api/today' && m === 'GET') return json({ tasks: await todayTasks(env) });
   if (p === '/api/projects' && m === 'GET') return json({ projects: await projects(env) });
+  /* Appointments for the week, from the calendar feed. Cached for five
+     minutes; the refresh button asks for a fresh copy. */
+  if (p === '/api/calendar' && m === 'GET') return json(await calendar(env, url.origin, url.searchParams.get('fresh') === '1'));
   /* Next actions and email proposals, for the left-hand pane. */
   if (p === '/api/next' && m === 'GET') {
     const raw = await paged(env, '/tasks/filter?query=' + encodeURIComponent('@next | @proposed'));
@@ -152,9 +157,51 @@ async function paged(env, path) {
   }
   return out;
 }
+/* Everything due from the past up to a week ahead: overdue, today and the
+   next six days (one day spare; the page keeps to its own seven). */
 async function todayTasks(env) {
-  const raw = await paged(env, '/tasks/filter?query=' + encodeURIComponent('today | overdue'));
+  const raw = await paged(env, '/tasks/filter?query=' + encodeURIComponent('due before: ' + londonDate(8)));
   return raw.filter(t => !t.checked && !t.completed_at && !t.is_deleted).map(norm);
+}
+function londonDate(addDays) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + addDays * 86400000));
+}
+
+/* ---------- Google Calendar, through the Apps Script feed ---------- */
+async function calendar(env, origin, fresh) {
+  if (!env.GCAL_URL || !env.GCAL_KEY) return { configured: false, events: [] };
+  const cache = caches.default, key = new Request(origin + '/__cache/calendar-v1');
+  if (!fresh) {
+    const hit = await cache.match(key);
+    if (hit) return hit.json();
+  }
+  let u;
+  try { u = new URL(env.GCAL_URL); } catch (e) { throw calErr('GCAL_URL is not a web address. It should be the Apps Script web app URL.'); }
+  u.searchParams.set('key', env.GCAL_KEY);
+  u.searchParams.set('days', '9');
+  const res = await fetch(u.toString(), { redirect: 'follow' });
+  const txt = await res.text();
+  let body = null;
+  try { body = JSON.parse(txt); } catch (e) { body = null; }
+  if (!res.ok || !body) throw calErr('The calendar script did not send calendar data (HTTP ' + res.status + '). Check it is deployed as a web app with access for Anyone.');
+  if (body.error) throw calErr(body.error === 'forbidden' ? 'The calendar script refused the key. GCAL_KEY must match the key the script logged.' : 'The calendar script said: ' + String(body.error).slice(0, 200));
+  const stamp = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$/;
+  const events = (Array.isArray(body.events) ? body.events : [])
+    .filter(e => e && stamp.test(String(e.start)) && stamp.test(String(e.end)))
+    .slice(0, 600)
+    .map(e => ({
+      id: String(e.id || '').slice(0, 200), cal: String(e.cal || '').slice(0, 60),
+      title: String(e.title || '(No title)').slice(0, 200), location: String(e.location || '').slice(0, 120),
+      allDay: !!e.allDay, start: String(e.start), end: String(e.end)
+    }));
+  const out = { configured: true, events, missing: (Array.isArray(body.missing) ? body.missing : []).map(String).slice(0, 10), at: new Date().toISOString() };
+  await cache.put(key, new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=300' } }));
+  return out;
+}
+function calErr(message) {
+  const err = new Error(message);
+  err.code = 'calendar_error'; err.status = 502;
+  return err;
 }
 async function projects(env) {
   const raw = await paged(env, '/projects');

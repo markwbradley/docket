@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#F6F7F9">
 <style>
-:root{--bg:#F6F7F9;--card:#FFFFFF;--ink:#1B1F2A;--soft:#5B6372;--muted:#8A91A0;--line:#E3E6EB;--line2:#EEF0F3;--ok:#1F6E55;--okbg:#E2F3EC;--warn:#9A5212;--warnbg:#FBEEDF;--bad:#B42318;--badbg:#FDECEA;--blue:#2448B0;--bluebg:#E8EEFC;--now:#C2410C}
+:root{--bg:#F6F7F9;--card:#FFFFFF;--ink:#1B1F2A;--soft:#5B6372;--muted:#8A91A0;--line:#E3E6EB;--line2:#EEF0F3;--ok:#1F6E55;--okbg:#E2F3EC;--warn:#9A5212;--warnbg:#FBEEDF;--bad:#B42318;--badbg:#FDECEA;--blue:#2448B0;--bluebg:#E8EEFC;--now:#C2410C;--cal:#0F766E;--calbg:#E7F4F1}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
@@ -137,27 +137,49 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 .sheet .row2 input{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
 .sheet .foot2{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 .sheet p{font-size:14px;margin:0 0 12px}
+/* v3.4: the week strip and calendar appointments */
+.days{max-width:1180px;margin:0 auto;padding:0 16px 10px;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+@media (max-width:860px){.days{padding:0 12px 8px;gap:4px}}
+.day{border:1px solid var(--line);background:#FFFFFF;border-radius:10px;padding:5px 2px 4px;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;line-height:1.15}
+.day .dn{font-size:11px;font-weight:650;color:var(--soft);text-transform:uppercase;letter-spacing:.03em}
+.day .dd{font-size:15px;font-weight:650}
+.day .dl{font-size:11px;color:var(--muted);min-height:13px}
+.day.on{background:var(--ink);border-color:var(--ink);color:#FFFFFF}
+.day.on .dn,.day.on .dl{color:#C9CED8}
+.day.drop{outline:2px dashed #9FB3EC;outline-offset:2px}
+.row.ev{background:var(--calbg);border-color:#BFE0DA;box-shadow:inset 3px 0 0 var(--cal)}
+.row.ev.now{border-color:#7CC4B8}
+.row.ev.past{opacity:.6}
+.row.ev .grip{cursor:default;color:var(--cal)}
+.row.ev .tag{background:#D3ECE7;color:var(--cal)}
+.allday{font-size:12px;color:var(--cal);background:var(--calbg);border-radius:9px;padding:6px 10px;margin-bottom:8px}
+.allday:empty{display:none}
+.roll{margin-top:10px}
+.roll:empty{display:none}
+.roll .btn{width:100%;padding:9px 12px;color:var(--soft)}
 </style>
 </head>
 <body>
 <header class="top">
   <div class="topin">
-    <h1>Today</h1><span class="date" id="date"></span>
+    <h1 id="dayname">Today</h1><span class="date" id="date"></span>
     <span class="sum num" id="sum"></span>
     <button class="icon" data-act="refresh" aria-label="Refresh from Todoist" title="Refresh from Todoist"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg></button>
     <button class="icon" data-act="status" aria-label="Connection status" title="Connection status"><span class="dot" id="statusdot"></span></button>
   </div>
-  <div class="tabs" role="tablist"><button data-act="tab" data-tab="today" class="on" role="tab">Today</button><button data-act="tab" data-tab="next" role="tab">Next <span id="nextbadge"></span></button></div>
+  <nav class="days" id="days" aria-label="Choose a day"></nav>
+  <div class="tabs" role="tablist"><button data-act="tab" data-tab="today" class="on" role="tab"><span id="daytab">Today</span></button><button data-act="tab" data-tab="next" role="tab">Next <span id="nextbadge"></span></button></div>
   <div class="bar"><i id="bar" style="width:0"></i></div>
 </header>
 <main class="wrap" id="wrap" data-tab="today">
-  <section class="pane listpane" aria-label="Today list"><h2>Today list <small id="listsum"></small><button class="btn replan" data-act="replan" title="Line up every unfinished task back to back, starting now, in the current order">Replan from now</button></h2><div id="notice"></div><div id="list" class="list"></div>
+  <section class="pane listpane" aria-label="Day plan"><h2><span id="listtitle">Today list</span> <small id="listsum"></small><button class="btn replan" data-act="replan" title="Line up every unfinished task back to back, in the current order, clear of appointments">Replan from now</button></h2><div id="notice"></div><div id="allday" class="allday"></div><div id="list" class="list"></div>
     <form class="tmpadd" data-form="tmp"><input name="title" placeholder="Add a temp task (dog walk, wash floor)" aria-label="Temp task name" autocomplete="off"><select name="min" aria-label="How long">
       <option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option><option value="90">1 h 30</option></select><button class="btn" type="submit">Add</button></form>
-    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drag the time pill left or right to change how long, or tap it to choose. Temp tasks stay here and never go to Todoist.</p>
+    <div class="roll" id="roll"></div>
+    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the time pill left or right to change how long, or tap it to choose. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist.</p>
   </section>
   <section class="pane bkpane" aria-label="Next actions"><h2>Next actions <small id="bksum"></small></h2><div id="backlog"></div>
-    <p class="hint">Drag a task into the Today list (press and hold on a phone), or press +, to give it a time. Drag one back here to take its time off. Tick a next action and Docket asks what comes after it.</p>
+    <p class="hint">Drag a task into the day’s list (press and hold on a phone), or press +, to give it a time on the day you have chosen. Drop it on a day at the top to put it on that day instead. Drag one back here to take its time off. Tick a next action and Docket asks what comes after it.</p>
   </section>
 </main>
 <div class="foot" id="ver"></div>
@@ -167,7 +189,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.3.1 · 7 November 2026';
+  var VERSION = 'Docket v3.4 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -175,9 +197,13 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   var PRESETS = [15, 30, 45, 60, 90, 120, 180, 240];
   var BACK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
   var UNDO_MS = 8000;
+  var CAL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 
+  /* S.today is the real date; S.date is the day being planned, which is
+     today or one of the six days after it. */
   var S = {
-    date: todayISO(), tasks: [], projects: {}, local: { temps: [], done: [] },
+    today: todayISO(), date: todayISO(), tasks: [], projects: {}, local: { temps: [], done: [] },
+    events: [], cal: { state: 'checking', msg: '', missing: [] }, calAt: 0,
     loaded: false, loading: false, loadedAt: 0, error: null,
     todoist: { state: 'checking', msg: '' }, store: { state: 'checking', msg: '' },
     overdueOpen: false,
@@ -218,7 +244,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   function fmtDate(iso) { var a = iso.split('-').map(Number); return new Date(Date.UTC(a[0], a[1] - 1, a[2])).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' }); }
   function clock(m) { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
   function durLabel(m) { if (m < 60) return m + ' min'; var h = Math.floor(m / 60), r = m % 60; return h + ' h' + (r ? ' ' + String(r).padStart(2, '0') : ''); }
-  function durShort(m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + 'h ' : '') + (r ? r + 'm' : (h ? '' : '0m')); }
+  function durShort(m) { var h = Math.floor(m / 60), r = m % 60; return ((h ? h + 'h ' : '') + (r ? r + 'm' : (h ? '' : '0m'))).trim(); }
   function todoistDur(m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + 'h' : '') + (r ? r + 'm' : '') || '5m'; }
   function parseDuration(d) {
     if (!d) return null;
@@ -229,6 +255,57 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     return t > 0 ? t : null;
   }
   function round5(m) { return Math.round(m / 5) * 5; }
+  /* ---------- the week ---------- */
+  function addDays(iso, n) { var a = iso.split('-').map(Number); return new Date(Date.UTC(a[0], a[1] - 1, a[2] + n)).toISOString().slice(0, 10); }
+  function weekDays() { var out = []; for (var i = 0; i < 7; i++) out.push(addDays(S.today, i)); return out; }
+  function lastDay() { return addDays(S.today, 6); }
+  function isToday() { return S.date === S.today; }
+  function utcDay(iso) { var a = iso.split('-').map(Number); return new Date(Date.UTC(a[0], a[1] - 1, a[2])); }
+  function dayShort(iso) { return iso === S.today ? 'Today' : iso === addDays(S.today, 1) ? 'Tomorrow' : fmtDate(iso); }
+  function dayInline(iso) { return iso === S.today ? 'today' : iso === addDays(S.today, 1) ? 'tomorrow' : fmtDate(iso); }
+  function dayTitle(iso) { return iso === S.today ? 'Today' : iso === addDays(S.today, 1) ? 'Tomorrow' : utcDay(iso).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long' }); }
+  function minOf(stamp) { return (+stamp.slice(11, 13)) * 60 + (+stamp.slice(14, 16)); }
+  /* Timed appointments on one day, as fixed blocks in minutes from midnight.
+     One that runs over midnight is cut at the day's edge. */
+  function dayEvents(day) {
+    var out = [];
+    (S.events || []).forEach(function (ev) {
+      if (ev.allDay || String(ev.start).length < 16 || String(ev.end).length < 16) return;
+      var sd = ev.start.slice(0, 10), ed = ev.end.slice(0, 10);
+      if (sd > day || ed < day) return;
+      var st = sd < day ? 0 : minOf(ev.start), en = ed > day ? 1440 : minOf(ev.end);
+      if (en <= st) return;
+      out.push({ kind: 'ev', id: 'ev:' + ev.id, title: ev.title, cal: ev.cal, loc: ev.location || '', start: st, min: en - st, done: false });
+    });
+    return out.sort(function (a, b) { return a.start - b.start; });
+  }
+  function allDayEvents(day) {
+    return (S.events || []).filter(function (ev) { return ev.allDay && ev.start <= day && (day < ev.end || (ev.end <= ev.start && ev.start === day)); });
+  }
+  /* The earliest start at or after `start` where `min` minutes clear every
+     appointment that day. A task never lands in a meeting. */
+  function fit(start, min, day) {
+    var evs = dayEvents(day || S.date), s = start, moved = true, guard = 0;
+    while (moved && guard++ < 60) {
+      moved = false;
+      for (var i = 0; i < evs.length; i++) {
+        var e = evs[i];
+        if (s < e.start + e.min && s + min > e.start) { s = e.start + e.min; moved = true; }
+      }
+    }
+    return s;
+  }
+  /* How much of a day is spoken for: timed tasks and appointments. */
+  function bookedMin(day) {
+    var m = 0;
+    S.tasks.forEach(function (t) {
+      var d = t.dueDate || '';
+      if (d.slice(0, 10) !== day || d.length < 16 || S.pendDone[t.id]) return;
+      m += parseDuration(t.duration) || DEF_MIN;
+    });
+    dayEvents(day).forEach(function (e) { m += e.min; });
+    return m;
+  }
   var toastFade = null;
   function toast(msg, action, ms) {
     var el = document.getElementById('toast');
@@ -306,24 +383,47 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       return r.text().then(function (txt) {
         var body; try { body = JSON.parse(txt); } catch (x) { throw { code: 'signin' }; }
         if (!r.ok) throw { code: body.error || 'error', message: body.message || ('HTTP ' + r.status) };
-        S.todoist = { state: 'ok', msg: '' };
+        /* Calendar calls report on the calendar, not on Todoist. */
+        if (!opts.cal) S.todoist = { state: 'ok', msg: '' };
         return body;
       });
     }).catch(function (e) {
       if (e instanceof TypeError) e = { code: navigator.onLine === false ? 'offline' : 'signin' };
-      S.todoist = { state: 'error', msg: advice(e) }; renderStatus();
+      if (!opts.cal) { S.todoist = { state: 'error', msg: advice(e) }; renderStatus(); }
       throw e;
     });
   }
+  var projectsLoading = false;
   function loadProjects() {
+    if (projectsLoading) return Promise.resolve();
+    projectsLoading = true;
     return api('/api/projects').then(function (p) {
+      projectsLoading = false;
       (p.projects || []).forEach(function (x) { S.projects[x.id] = x; }); render();
-    }, function () { });
+    }, function () { projectsLoading = false; });
   }
-  function load() {
+  /* Appointments for the week. A failure keeps the last ones on screen. */
+  function loadCalendar(fresh) {
+    if (!fresh && S.cal.state === 'ok' && Date.now() - S.calAt < 120000) return Promise.resolve();
+    var tk = S.calToken = (S.calToken || 0) + 1;
+    return api('/api/calendar' + (fresh ? '?fresh=1' : ''), { cal: true, timeout: 30000 }).then(function (r) {
+      if (tk !== S.calToken) return;
+      S.events = r.events || []; S.calAt = Date.now();
+      S.cal = { state: r.configured === false ? 'off' : 'ok', msg: '', missing: r.missing || [] };
+      render();
+    }, function (e) {
+      if (tk !== S.calToken) return;
+      var c = (e && e.code) || '';
+      S.cal = { state: 'error', missing: [], msg: c === 'signin' || c === 'offline' ? advice(e) : c === 'timeout' ? 'Google Calendar is slow to answer, so appointments may be out of date.' : 'Appointments couldn’t be read' + (e && e.message ? ': ' + e.message : '.') };
+      render();
+    });
+  }
+  function load(fresh) {
+    rollDay();
+    loadCalendar(fresh === true);
     if (S.loading && !S.stalled) return Promise.resolve();
     var token = S.loadToken = (S.loadToken || 0) + 1;
-    S.loading = true; S.stalled = false; S.date = todayISO(); renderStatus();
+    S.loading = true; S.stalled = false; renderStatus();
     clearTimeout(S.stallTimer);
     S.stallTimer = setTimeout(function () { if (S.loadToken === token && S.loading) { S.stalled = true; render(); } }, 8000);
     if (!Object.keys(S.projects).length) loadProjects();
@@ -359,8 +459,17 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     });
     (S.local.done || []).forEach(function (d) { if (!seen[d.id]) out.push({ kind: 'td', id: d.id, title: d.title, start: d.start, min: d.min, pid: d.pid, prio: d.prio, done: true }); });
     (S.local.temps || []).forEach(function (x) { out.push({ kind: 'tmp', id: x.id, x: x, title: x.title, start: x.start, min: x.min, done: !!x.done }); });
-    out.sort(function (a, b) { return a.start - b.start || (a.done === b.done ? 0 : a.done ? -1 : 1); });
+    dayEvents(S.date).forEach(function (e) { out.push(e); });
+    /* Same start: ticked-off tasks first, then appointments, then the rest. */
+    var rank = function (x) { return x.done ? 0 : x.kind === 'ev' ? 1 : 2; };
+    out.sort(function (a, b) { return a.start - b.start || rank(a) - rank(b); });
     return out;
+  }
+  /* Where "add to the end" goes: after the last task, not after a late appointment. */
+  function endIndex(id) {
+    var k = 0;
+    items().filter(function (x) { return x.id !== id; }).forEach(function (x, i) { if (x.kind !== 'ev') k = i + 1; });
+    return k;
   }
   function backlog() {
     var today = [], over = [];
@@ -369,34 +478,35 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       if (hasLabel(t, 'next') || hasLabel(t, 'proposed')) return; /* shown under their project instead */
       if (isParked(t.projectId)) return;
       var d = (t.dueDate || '').slice(0, 10);
-      if (d === S.date) today.push(t); else if (d && d < S.date) over.push(t);
+      if (d === S.date) today.push(t); else if (d && d < S.today) over.push(t);
     });
     var pr = prioN;
     today.sort(function (a, b) { return pr(a) - pr(b); });
     over.sort(function (a, b) { return pr(a) - pr(b) || String(b.dueDate).localeCompare(String(a.dueDate)); });
     return { today: today, over: over };
   }
-  function defaultStart() { var n = Math.ceil(nowMin() / 15) * 15; return Math.max(DAY_START, n); }
+  function defaultStart() { return isToday() ? Math.max(DAY_START, Math.ceil(nowMin() / 15) * 15) : DAY_START; }
 
   /* Put an entry at position `index` of the list (the list without it):
-     it starts where the entry before it ends, and later entries move down
-     only as far as they must to stop overlapping. */
+     it starts where the entry before it ends, clear of appointments, and
+     later entries move down only as far as they must to stop overlapping.
+     Appointments never move. */
   function place(entry, index) {
     var list = items().filter(function (x) { return x.id !== entry.id; });
-    var prev = null;
-    for (var i = index - 1; i >= 0; i--) { prev = list[i]; break; }
+    var prev = index > 0 ? list[index - 1] : null;
     var next = list[index] || null;
     var start;
     if (prev) start = prev.start + prev.min;
-    else if (next) start = Math.max(0, next.start - entry.min);
+    else if (next && next.kind !== 'ev') start = Math.max(0, next.start - entry.min);
     else start = defaultStart();
+    start = fit(start, entry.min);
     entry.start = start;
     var changes = {}; changes[entry.id] = entry;
     var cur = start + entry.min;
     for (var j = index; j < list.length; j++) {
       var it = list[j];
-      if (it.done) continue;
-      if (it.start < cur) { it.start = cur; changes[it.id] = it; }
+      if (it.done || it.kind === 'ev') continue;
+      if (it.start < cur) { it.start = fit(cur, it.min); changes[it.id] = it; }
       cur = Math.max(cur, it.start + it.min);
     }
     return commit(changes);
@@ -404,13 +514,13 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   function resize(id, min) {
     var list = items(), idx = -1;
     list.forEach(function (x, i) { if (x.id === id) idx = i; });
-    if (idx < 0) return;
+    if (idx < 0 || list[idx].kind === 'ev') return;
     var it = list[idx]; it.min = min; it.durChanged = true;
     var changes = {}; changes[id] = it;
     var cur = it.start + min;
     for (var j = idx + 1; j < list.length; j++) {
-      var o = list[j]; if (o.done) continue;
-      if (o.start < cur) { o.start = cur; changes[o.id] = o; }
+      var o = list[j]; if (o.done || o.kind === 'ev') continue;
+      if (o.start < cur) { o.start = fit(cur, o.min); changes[o.id] = o; }
       cur = Math.max(cur, o.start + o.min);
     }
     return commit(changes);
@@ -425,10 +535,10 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
         if (x) { x.start = c.start; x.min = c.min; }
         return;
       }
-      if (c.done) return;
+      if (c.done || c.kind === 'ev') return;
       var t = c.t || S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
       var before = { dueDate: t.dueDate, duration: t.duration };
-      t.dueDate = S.date + 'T' + clock(c.start) + ':00';
+      t.dueDate = (c.day || S.date) + 'T' + clock(c.start) + ':00';
       var w = { id: id, date: t.dueDate };
       if (c.durChanged || !c.hasDur || c.fromBacklog) { t.duration = todoistDur(c.min); w.duration = t.duration; }
       S.pend[id] = { dueDate: t.dueDate, duration: w.duration || null, at: Date.now() };
@@ -449,24 +559,27 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     });
   }
   /* Replan from now: every unfinished task, in its current order, back to
-     back from the next five-minute mark. Gaps close up; ticked-off tasks
-     stay where they were. Undo puts the old times back. */
+     back from the next five-minute mark (from the start of the day on a
+     later day), stepping round appointments. Gaps close up; ticked-off
+     tasks stay where they were. Undo puts the old times back. */
   var lastReplan = null;
+  function replanLabel() { return isToday() ? 'Replan from now' : 'Line up from ' + clock(DAY_START); }
   function replanFromNow() {
     if (!S.loaded) { toast(S.loading ? 'Still loading from Todoist. Try again once your tasks appear.' : 'Todoist isn’t loaded, so times can’t be changed yet.'); return; }
-    var open = items().filter(function (x) { return !x.done; });
+    var open = items().filter(function (x) { return !x.done && x.kind !== 'ev'; });
     if (!open.length) { toast('Nothing left to replan.'); return; }
-    var cur = Math.ceil(nowMin() / 5) * 5, changes = {}, undo = {};
+    var cur = isToday() ? Math.ceil(nowMin() / 5) * 5 : DAY_START, changes = {}, undo = {};
     open.forEach(function (it) {
-      if (it.start !== cur) { undo[it.id] = { start: it.start, kind: it.kind }; it.start = cur; changes[it.id] = it; }
-      cur += it.min;
+      var s = fit(cur, it.min);
+      if (it.start !== s) { undo[it.id] = { start: it.start, kind: it.kind }; it.start = s; changes[it.id] = it; }
+      cur = s + it.min;
     });
     var n = Object.keys(changes).length;
-    if (!n) { toast('Already lined up from now.'); return; }
+    if (!n) { toast(isToday() ? 'Already lined up from now.' : 'Already lined up.'); return; }
     lastReplan = undo;
     var btn = document.querySelector('[data-act="replan"]'); if (btn) { btn.disabled = true; btn.textContent = 'Replanning…'; }
-    commit(changes).then(function () { var b = document.querySelector('[data-act="replan"]'); if (b) { b.disabled = false; b.textContent = 'Replan from now'; } });
-    toast(n + (n === 1 ? ' task' : ' tasks') + ' moved. Starts ' + clock(open[0].start) + ', ends ' + clock(cur) + (cur >= 1440 ? ' tomorrow' : '') + '.', { act: 'undo-replan', label: 'Undo' });
+    commit(changes).then(function () { var b = document.querySelector('[data-act="replan"]'); if (b) { b.disabled = false; b.textContent = replanLabel(); } });
+    toast(n + (n === 1 ? ' task' : ' tasks') + ' moved. Starts ' + clock(open[0].start) + ', ends ' + clock(cur) + (cur >= 1440 ? ' next day' : '') + '.', { act: 'undo-replan', label: 'Undo' });
   }
   function undoReplan() {
     var undo = lastReplan; lastReplan = null; if (!undo) return;
@@ -476,6 +589,102 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     document.getElementById('toast').innerHTML = '';
     toast('Times put back.');
   }
+  /* ---------- end of the day: what's left moves to the next day ---------- */
+  /* Unfinished tasks in the list keep their order and length and line up
+     after the next day's timed tasks, clear of its appointments. Tasks due
+     this day without a time move too. Repeating tasks stay put, so a missed
+     habit isn't quietly skipped. Temp tasks go with the rest. */
+  function rollPlan() {
+    var open = items().filter(function (x) { return !x.done && x.kind !== 'ev'; });
+    var untimedHere = function (t) { return t.dueDate === S.date && live(t) && !hasLabel(t, 'proposed') && !S.pendDone[t.id]; };
+    return {
+      to: addDays(S.date, 1),
+      timed: open.filter(function (x) { return x.kind === 'tmp' || !x.recurring; }),
+      untimed: S.tasks.filter(function (t) { return untimedHere(t) && !t.recurring; }),
+      stay: open.filter(function (x) { return x.kind === 'td' && x.recurring; }).length + S.tasks.filter(function (t) { return untimedHere(t) && t.recurring; }).length
+    };
+  }
+  function changeTemps(day, fn) {
+    return api('/api/local?date=' + day).then(function (d) {
+      return api('/api/local?date=' + day, { method: 'PUT', body: { temps: fn(d.temps || []), done: d.done || [], orig: d.orig || {} } });
+    }).then(function () { if (S.date === day) loadLocal(); }, function (e) { toast('Temp tasks couldn’t be moved. ' + advice(e)); });
+  }
+  function sendMoves(writes, undo, failMsg) {
+    if (!writes.length) return Promise.resolve(true);
+    function back(u) { delete S.pend[u.t.id]; u.t.dueDate = u.dueDate; u.t.duration = u.duration; }
+    return api('/api/update', { method: 'POST', body: { changes: writes }, timeout: 25000 }).then(function (r) {
+      var bad = {}; ((r && r.failures) || []).forEach(function (f) { bad[f.id] = true; });
+      var nb = 0; undo.forEach(function (u) { if (bad[u.t.id]) { nb++; back(u); } });
+      if (nb) { render(); toast(nb + (nb === 1 ? ' task wasn’t' : ' tasks weren’t') + ' changed in Todoist.'); }
+      return !nb;
+    }, function (e) {
+      if (e && e.code === 'timeout') { toast('Todoist is slow to confirm. Checking again shortly.'); setTimeout(load, 10000); return false; }
+      undo.forEach(back); render(); toast(failMsg + ' ' + advice(e)); return false;
+    });
+  }
+  var lastRoll = null, rolling = false;
+  function rollOver() {
+    if (!S.loaded) { toast('Still loading from Todoist. Try again once your tasks appear.'); return; }
+    if (rolling) return;
+    var r = rollPlan(), from = S.date, to = r.to;
+    if (!r.timed.length && !r.untimed.length) { toast('Nothing left to move.'); return; }
+    rolling = true;
+    tempsOf(to).then(function (toTemps) {
+      rolling = false;
+      if (S.date !== from) { toast('Nothing moved: the day changed first.'); return; }
+      rollTo(r, from, to, toTemps);
+    });
+  }
+  function rollTo(r, from, to, toTemps) {
+    var moving = {}; r.timed.forEach(function (x) { moving[x.id] = true; });
+    var cur = Math.max(dayEnd(to, moving, toTemps), DAY_START), writes = [], temps = [], undo = { from: from, to: to, tasks: [], temps: [], moved: [] };
+    r.timed.forEach(function (it) {
+      var st = fit(cur, it.min, to); cur = st + it.min;
+      if (it.kind === 'tmp') { temps.push({ id: it.id, title: it.title, min: it.min, start: st, done: false }); return; }
+      var t = it.t;
+      undo.tasks.push({ t: t, dueDate: t.dueDate, duration: t.duration });
+      t.dueDate = to + 'T' + clock(st) + ':00';
+      if (!it.hasDur) t.duration = todoistDur(it.min);
+      S.pend[t.id] = { dueDate: t.dueDate, duration: it.hasDur ? null : t.duration, at: Date.now() };
+      writes.push({ id: t.id, date: t.dueDate, durationMin: it.hasDur ? null : it.min, recurring: false, string: '' });
+    });
+    r.untimed.forEach(function (t) {
+      undo.tasks.push({ t: t, dueDate: t.dueDate, duration: t.duration });
+      t.dueDate = to; S.pend[t.id] = { dueDate: to, duration: null, at: Date.now() };
+      writes.push({ id: t.id, date: to, durationMin: null, recurring: false, string: '' });
+    });
+    if (temps.length) {
+      var ids = {}; temps.forEach(function (x) { ids[x.id] = true; });
+      undo.temps = S.local.temps.filter(function (x) { return ids[x.id]; }).map(function (x) { return Object.assign({}, x); });
+      undo.moved = temps;
+      S.local.temps = S.local.temps.filter(function (x) { return !ids[x.id]; }); saveLocal();
+      changeTemps(to, function (list) { return list.concat(temps); });
+    }
+    lastRoll = undo;
+    render();
+    var n = writes.length + temps.length;
+    toast('Moved ' + n + (n === 1 ? ' task' : ' tasks') + ' to ' + dayInline(to) + (r.stay ? '. ' + r.stay + ' repeating ' + (r.stay === 1 ? 'task stays' : 'tasks stay') : '') + '.', { act: 'undo-roll', label: 'Undo' }, 10000);
+    sendMoves(writes, undo.tasks, 'Not moved in Todoist.');
+  }
+  function undoRoll() {
+    var u = lastRoll; lastRoll = null; if (!u) return;
+    clearTimeout(toastTimer); clearTimeout(toastFade); document.getElementById('toast').innerHTML = '';
+    var writes = [], redo = [];
+    u.tasks.forEach(function (x) {
+      redo.push({ t: x.t, dueDate: x.t.dueDate, duration: x.t.duration });
+      x.t.dueDate = x.dueDate;
+      S.pend[x.t.id] = { dueDate: x.dueDate, duration: null, at: Date.now() };
+      writes.push({ id: x.t.id, date: x.dueDate, durationMin: null, recurring: false, string: '' });
+    });
+    if (u.moved.length) {
+      var ids = {}; u.moved.forEach(function (x) { ids[x.id] = true; });
+      if (S.date === u.from) { S.local.temps = S.local.temps.concat(u.temps); saveLocal(); }
+      else changeTemps(u.from, function (list) { return list.concat(u.temps); });
+      changeTemps(u.to, function (list) { return list.filter(function (x) { return !ids[x.id]; }); });
+    }
+    render();
+    sendMoves(writes, redo, 'Not put back in Todoist.').then(function (ok) { if (ok) toast('Put back.'); });
+  }
   function addFromBacklog(id, index) {
     var t = findTask(id); if (!t) return;
     S.local.orig = S.local.orig || {};
@@ -483,8 +692,58 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     if (S.tasks.indexOf(t) < 0) S.tasks.push(t);
     var m = parseDuration(t.duration);
     var entry = { kind: 'td', id: id, t: t, title: t.content, min: m || DEF_MIN, hasDur: !!m, fromBacklog: true, start: 0 };
-    if (index == null) index = items().filter(function (x) { return x.id !== id; }).length;
+    if (index == null) index = endIndex(id);
     place(entry, index);
+  }
+  /* Dropped on another day: it goes after that day's last timed task (or
+     from the start of the day), clear of appointments, and keeps its length. */
+  function moveToDay(id, day) {
+    var t = findTask(id); if (!t) { render(); return; }
+    tempsOf(day).then(function (temps) {
+      var m = parseDuration(t.duration), min = m || DEF_MIN, skip = {}; skip[id] = true;
+      var floor = day === S.today ? Math.max(DAY_START, Math.ceil(nowMin() / 15) * 15) : DAY_START;
+      var start = fit(Math.max(dayEnd(day, skip, temps), floor), min, day);
+      if (S.tasks.indexOf(t) < 0) S.tasks.push(t);
+      var ch = {}; ch[id] = { kind: 'td', id: id, t: t, title: t.content, start: start, min: min, hasDur: !!m, fromBacklog: !m, day: day };
+      commit(ch);
+      toast('Moved to ' + fmtDate(day) + ', ' + clock(start) + '–' + clock(start + min) + '.');
+    });
+  }
+  /* Where a day's timed plan ends: its Todoist tasks and its temp tasks. */
+  function dayEnd(day, skip, temps) {
+    var end = 0;
+    S.tasks.forEach(function (y) {
+      var d = y.dueDate || '';
+      if (skip[y.id] || S.pendDone[y.id] || d.slice(0, 10) !== day || d.length < 16) return;
+      end = Math.max(end, minOf(d) + (parseDuration(y.duration) || DEF_MIN));
+    });
+    (temps || []).forEach(function (x) { if (!x.done && !skip[x.id]) end = Math.max(end, (+x.start || 0) + (+x.min || 0)); });
+    return end;
+  }
+  /* Another day's temp tasks (this day's are already here). */
+  function tempsOf(day) {
+    if (day === S.date) return Promise.resolve(S.local.temps || []);
+    return api('/api/local?date=' + day).then(function (d) { return d.temps || []; }, function () { return []; });
+  }
+  /* Show another day. A save still waiting for the old day goes first. */
+  function switchDay(day) {
+    if (day === S.date) return;
+    flushSave();
+    S.date = day;
+    S.local = { temps: [], done: [], orig: {} };
+    lastReplan = null;
+    closeMenu();
+    render();
+    loadLocal();
+  }
+  /* Midnight, or a phone woken the next morning: the week moves on, and a
+     day that has slipped into the past gives way to today. */
+  function rollDay() {
+    var t = todayISO();
+    if (t === S.today) return false;
+    S.today = t;
+    if (S.date < t) switchDay(t); else render();
+    return true;
   }
   function unschedule(id) {
     var t = S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
@@ -496,10 +755,10 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var back = (id in orig) ? orig[id] : (hasLabel(t, 'next') ? null : S.date);
     if (back && back.slice(0, 10) === S.date) back = S.date;
     t.dueDate = back; S.pend[id] = { dueDate: back, duration: null, at: Date.now() };
-    if (!back || back.slice(0, 10) > S.date) S.tasks = S.tasks.filter(function (y) { return y.id !== id; });
+    if (!back || back.slice(0, 10) > lastDay()) S.tasks = S.tasks.filter(function (y) { return y.id !== id; });
     delete orig[id]; saveLocal();
     render();
-    var where = !back ? (hasLabel(t, 'next') ? 'Back in Next actions.' : 'Back to no date.') : back === S.date ? 'Back in Due today.' : back < S.date ? 'Back to overdue (' + fmtDate(back.slice(0, 10)) + ').' : 'Back to ' + fmtDate(back.slice(0, 10)) + '.';
+    var where = !back ? (hasLabel(t, 'next') ? 'Back in Next actions.' : 'Back to no date.') : back === S.date ? 'Back in Due ' + (isToday() ? 'today' : fmtDate(S.date)) + '.' : back < S.today ? 'Back to overdue (' + fmtDate(back.slice(0, 10)) + ').' : 'Back to ' + fmtDate(back.slice(0, 10)) + '.';
     api('/api/unschedule', { method: 'POST', body: { id: id, date: back } }).then(function (r) {
       if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
       toast(where);
@@ -508,6 +767,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   function tick(id) {
     var it = items().filter(function (x) { return x.id === id; })[0];
     var bl = !it && findTask(id);
+    if (it && it.kind === 'ev') return;
     if (it && it.kind === 'tmp') { it.x.done = !it.x.done; saveLocal(); render(); return; }
     if (it && it.done) {
       S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
@@ -748,21 +1008,35 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       S.store = { state: 'ok', msg: '' };
     }, function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be loaded. ' + advice(e) }; }).then(render);
   }
+  /* Each save carries its own day and that day's data, so switching days
+     can never write one day's temp tasks under another. */
+  var savePending = null;
   function saveLocal() {
     clearTimeout(saveTimer);
-    var date = S.date;
-    saveTimer = setTimeout(function () {
-      saveTimer = null;
-      api('/api/local?date=' + date, { method: 'PUT', body: { temps: S.local.temps, done: S.local.done, orig: S.local.orig || {} } })
+    var date = S.date, local = S.local;
+    savePending = function () {
+      saveTimer = null; savePending = null;
+      api('/api/local?date=' + date, { method: 'PUT', body: { temps: local.temps, done: local.done, orig: local.orig || {} } })
         .then(function () { S.store = { state: 'ok', msg: '' }; renderStatus(); },
           function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be saved. ' + advice(e) }; renderStatus(); toast('Couldn’t save temp tasks.'); });
-    }, 400);
+    };
+    saveTimer = setTimeout(savePending, 400);
   }
+  function flushSave() { if (savePending) { clearTimeout(saveTimer); savePending(); } }
 
   /* ---------- rendering ---------- */
+  function evHtml(it, now) {
+    var isNow = now != null && now >= it.start && now < it.start + it.min;
+    var past = now != null && it.start + it.min <= now;
+    var meta = [esc(it.cal || 'Calendar')]; if (it.loc) meta.push(esc(it.loc));
+    return '<div class="row ev' + (isNow ? ' now' : '') + (past ? ' past' : '') + '" data-row="' + esc(it.id) + '" data-kind="ev">' +
+      '<span class="grip" aria-hidden="true">' + CAL + '</span>' +
+      '<div class="body"><span class="title">' + esc(it.title) + '</span><span class="meta">' + meta.join(' · ') + '</span></div>' +
+      '<div class="right"><span class="time num">' + clock(it.start) + '–' + clock(it.start + it.min) + '</span><span class="tag num">' + durLabel(it.min) + '</span></div></div>';
+  }
   function rowHtml(it, i, now) {
-    var isNow = !it.done && now >= it.start && now < it.start + it.min;
-    var isLate = !it.done && it.start + it.min <= now;
+    var isNow = now != null && !it.done && now >= it.start && now < it.start + it.min;
+    var isLate = now != null && !it.done && it.start + it.min <= now;
     var meta = [];
     if (it.kind === 'tmp') meta.push('<span class="tag">Temp</span>');
     else if (projName(it.pid)) meta.push('<span>' + esc(projName(it.pid)) + '</span>');
@@ -775,16 +1049,16 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       '<div class="right"><span class="time num">' + clock(it.start) + '–' + clock(it.start + it.min) + '</span>' +
       '<span class="pill num" data-pill="' + esc(it.id) + '" role="button" tabindex="0" aria-label="Duration ' + durLabel(it.min) + '. Drag sideways or tap to change.">' + durLabel(it.min) + '</span></div>' +
       (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' :
-        (!it.done && !it.recurring ? '<button class="x" data-act="nottoday" data-id="' + esc(it.id) + '" aria-label="Not today: ' + esc(it.title) + '" title="Not today">' + BACK + '</button>' : '')) +
+        (!it.done && !it.recurring ? '<button class="x" data-act="nottoday" data-id="' + esc(it.id) + '" aria-label="' + (isToday() ? 'Not today' : 'Take the time off') + ': ' + esc(it.title) + '" title="' + (isToday() ? 'Not today' : 'Take the time off') + '">' + BACK + '</button>' : '')) +
       '</div>';
   }
   function bkHtml(t, showProject) {
-    var m = parseDuration(t.duration), d = (t.dueDate || '').slice(0, 10), od = d && d < S.date, st = timeOf(t);
+    var m = parseDuration(t.duration), d = (t.dueDate || '').slice(0, 10), od = d && d < S.today, st = timeOf(t);
     var meta = [];
     if (showProject !== false && projName(t.projectId)) meta.push('<span>' + esc(projName(t.projectId)) + '</span>');
-    if (st != null) meta.push('<span class="chip">Today ' + clock(st) + '</span>');
+    if (st != null) meta.push('<span class="chip">' + esc(dayShort(S.date)) + ' ' + clock(st) + '</span>');
     else if (od) meta.push('<span class="od">' + esc(fmtDate(d)) + '</span>');
-    else if (d && d !== S.date) meta.push('<span>' + esc(fmtDate(d)) + '</span>');
+    else if (d && d !== S.date) meta.push('<span>' + esc(dayShort(d)) + ((t.dueDate || '').length >= 16 ? ' ' + t.dueDate.slice(11, 16) : '') + '</span>');
     if (hasLabel(t, 'waiting')) meta.push('<span class="tag wait">Waiting</span>');
     if (m) meta.push('<span>' + durLabel(m) + '</span>');
     if (t.recurring) meta.push('<span>Repeats</span>');
@@ -792,54 +1066,83 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       (st == null ? '<button class="grip" data-grip="bk" data-id="' + esc(t.id) + '" aria-label="Drag into the Today list: ' + esc(t.content) + '">' + GRIP + '</button>' : '<span class="grip" aria-hidden="true"></span>') +
       '<button class="tick ' + esc(t.priority || '') + '" data-act="tick" data-id="' + esc(t.id) + '" aria-label="Mark done: ' + esc(t.content) + '"></button>' +
       '<div class="body"><span class="title">' + esc(t.content) + '</span>' + (meta.length ? '<span class="meta">' + meta.join(' · ') + '</span>' : '') + '</div>' +
-      (st == null ? '<button class="add" data-act="add" data-id="' + esc(t.id) + '" aria-label="Add to the end of the Today list: ' + esc(t.content) + '">+</button>' : '') + '</div>';
+      (st == null ? '<button class="add" data-act="add" data-id="' + esc(t.id) + '" aria-label="Add to the end of ' + esc(dayShort(S.date)) + ': ' + esc(t.content) + '">+</button>' : '') + '</div>';
+  }
+  /* The seven days across the top: tap to plan a day, drop a task on one
+     to move it there. The small figure is how much of the day is booked. */
+  function renderDays() {
+    var html = '';
+    weekDays().forEach(function (d) {
+      var dt = utcDay(d), booked = bookedMin(d), on = d === S.date;
+      var dn = d === S.today ? 'Today' : dt.toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short' });
+      html += '<button class="day' + (on ? ' on' : '') + '" data-act="day" data-day="' + d + '" aria-pressed="' + on + '" aria-label="' + esc(fmtDate(d)) + (booked ? ', ' + durLabel(booked) + ' booked' : ', nothing booked') + '">' +
+        '<span class="dn">' + esc(dn) + '</span><span class="dd num">' + dt.getUTCDate() + '</span>' +
+        '<span class="dl num">' + (booked ? (Math.max(1, Math.round(booked / 30)) / 2) + 'h' : '') + '</span></button>';
+    });
+    document.getElementById('days').innerHTML = html;
   }
   function render() {
     if (drag || scrub) return;
+    renderDays();
+    document.getElementById('dayname').textContent = dayTitle(S.date);
     document.getElementById('date').textContent = fmtDate(S.date);
+    document.getElementById('daytab').textContent = dayShort(S.date);
+    document.getElementById('listtitle').textContent = isToday() ? 'Today list' : 'Plan for ' + fmtDate(S.date);
+    var rb = document.querySelector('[data-act="replan"]'); if (rb && !rb.disabled) rb.textContent = replanLabel();
+    var ad = allDayEvents(S.date);
+    document.getElementById('allday').innerHTML = ad.length ? 'All day: ' + ad.map(function (e) { return esc(e.title); }).join(' · ') : '';
     var notice = '';
     if (S.newVersion) notice += '<div class="notice info">A newer Docket is ready. <button class="btn dark" data-act="reload">Reload</button></div>';
     if (S.error && !S.loading && S.error.code === 'signin') notice = '<div class="notice bad">' + esc(advice(S.error)) + ' <button class="btn dark" data-act="reload">Reload</button></div>';
     else if (S.error && !S.loading) notice = '<div class="notice bad">' + esc(advice(S.error)) + ' <button class="btn" data-act="refresh">Try again</button></div>';
     if (S.stalled) notice += '<div class="notice info">Still waiting for Todoist. <button class="btn" data-act="refresh">Try again</button></div>';
     if (S.store.state === 'error') notice += '<div class="notice bad">' + esc(S.store.msg) + '</div>';
+    if (S.cal.state === 'error') notice += '<div class="notice info">' + esc(S.cal.msg) + '</div>';
+    if (S.cal.missing && S.cal.missing.length) notice += '<div class="notice info">The calendar script couldn’t find ' + esc(S.cal.missing.join(' or ')) + '. Check the names in the script.</div>';
     document.getElementById('notice').innerHTML = notice;
 
-    var list = items(), now = nowMin(), html = '';
-    if (!S.loaded) html = '<div class="empty">' + (S.loading ? 'Loading today from Todoist…' : 'Not loaded yet.') + '</div>';
-    else if (!list.length) html = '<div class="empty" data-droplist>Nothing has a time yet today. Drag tasks in from All day.</div>';
+    var list = items(), now = isToday() ? nowMin() : null, html = '', n = 0;
+    if (!S.loaded) html = '<div class="empty">' + (S.loading ? 'Loading from Todoist…' : 'Not loaded yet.') + '</div>';
+    else if (!list.length) html = '<div class="empty" data-droplist>Nothing has a time yet ' + (isToday() ? 'today' : 'on ' + esc(fmtDate(S.date))) + '. Drag tasks in from Next actions.</div>';
     else list.forEach(function (it, i) {
       if (i > 0) {
         var p = list[i - 1], gap = it.start - (p.start + p.min);
         if (gap >= 15) html += '<div class="gap num">' + durShort(gap) + ' free</div>';
       }
-      html += rowHtml(it, i, now);
+      html += it.kind === 'ev' ? evHtml(it, now) : rowHtml(it, n++, now);
     });
     document.getElementById('list').innerHTML = html;
 
-    /* What is left, not what was planned: unfinished time, and the
-       earliest finish if you worked straight through from now. */
-    var open = list.filter(function (x) { return !x.done; });
+    /* What is left, not what was planned: unfinished time, and (today) the
+       earliest finish working straight through from now, round appointments. */
+    var tasks = list.filter(function (x) { return x.kind !== 'ev'; });
+    var open = tasks.filter(function (x) { return !x.done; });
     var left = open.reduce(function (a, x) { return a + x.min; }, 0);
-    var doneN = list.length - open.length;
+    var doneN = tasks.length - open.length;
     var planEnd = open.length ? Math.max.apply(null, open.map(function (x) { return x.start + x.min; })) : null;
-    var soonest = open.length ? now + left : null;
-    var late = open.filter(function (x) { return x.start < now - 5; }).length;
-    var finish = planEnd == null ? null : Math.max(planEnd, soonest);
-    var sumTxt = !list.length ? '' : !open.length ? 'All ' + list.length + ' done' :
-      doneN + ' of ' + list.length + ' done · ' + durShort(left) + ' left · ends ' + clock(finish) + (finish >= 1440 ? ' tomorrow' : '') +
-      (soonest > planEnd ? ' at the earliest' : '');
+    var soonest = null;
+    if (now != null && open.length) { soonest = now; open.forEach(function (x) { soonest = fit(soonest, x.min) + x.min; }); }
+    var late = now == null ? 0 : open.filter(function (x) { return x.start < now - 5; }).length;
+    var finish = planEnd == null ? null : Math.max(planEnd, soonest == null ? 0 : soonest);
+    var evN = list.length - tasks.length;
+    var endTxt = finish == null ? '' : 'ends ' + clock(finish) + (finish >= 1440 ? (isToday() ? ' tomorrow' : ' next day') : '');
+    var sumTxt = !tasks.length ? (evN ? evN + (evN === 1 ? ' appointment' : ' appointments') : '') :
+      !open.length ? 'All ' + tasks.length + ' done' :
+      isToday() ? doneN + ' of ' + tasks.length + ' done · ' + durShort(left) + ' left · ' + endTxt + (soonest > planEnd ? ' at the earliest' : '') :
+      open.length + (open.length === 1 ? ' task · ' : ' tasks · ') + durShort(left) + ' planned · ' + endTxt;
     document.getElementById('sum').textContent = sumTxt;
     var ls = document.getElementById('listsum');
-    ls.textContent = open.length ? durShort(left) + ' left · ends ' + clock(finish) + (late ? ' · ' + late + ' behind' : '') : '';
-    ls.className = soonest > planEnd || late ? 'behind' : '';
-    document.getElementById('bar').style.width = (list.length ? Math.round(doneN / list.length * 100) : 0) + '%';
+    ls.textContent = open.length ? durShort(left) + (isToday() ? ' left · ' : ' planned · ') + endTxt + (late ? ' · ' + late + ' behind' : '') : '';
+    ls.className = (soonest != null && soonest > planEnd) || late ? 'behind' : '';
+    var rp = S.loaded && S.date < lastDay() ? rollPlan() : null, nRoll = rp ? rp.timed.length + rp.untimed.length : 0;
+    document.getElementById('roll').innerHTML = nRoll ? '<button class="btn" data-act="rollover" title="Moves every unfinished task here, and anything due this day without a time, to the next day. Repeating tasks stay.">Move ' + nRoll + ' unfinished to ' + esc(dayInline(rp.to)) + ' →</button>' : '';
+    document.getElementById('bar').style.width = (tasks.length && isToday() ? Math.round(doneN / tasks.length * 100) : 0) + '%';
 
     captureProps();
     var bk = backlog(), bh = '';
     if (S.loaded) {
       if (S.proposed.length) bh += '<div class="secth">From your email · ' + S.proposed.length + '</div>' + S.proposed.map(propHtml).join('');
-      if (bk.today.length) bh += '<div class="sub"><span>Due today · ' + bk.today.length + '</span></div><div class="list">' + bk.today.map(function (t) { return bkHtml(t, true); }).join('') + '</div>';
+      if (bk.today.length) bh += '<div class="sub"><span>Due ' + esc(isToday() ? 'today' : fmtDate(S.date)) + ' · ' + bk.today.length + '</span></div><div class="list">' + bk.today.map(function (t) { return bkHtml(t, true); }).join('') + '</div>';
       if (bk.over.length) {
         bh += '<div class="sub"><button class="' + (S.overdueOpen ? 'open' : '') + '" data-act="overdue" aria-expanded="' + S.overdueOpen + '">' + CARET + 'Overdue · ' + bk.over.length + '</button></div>';
         if (S.overdueOpen) bh += '<div class="list">' + bk.over.map(function (t) { return bkHtml(t, true); }).join('') + '</div>';
@@ -865,26 +1168,34 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       PRESETS.map(function (m) { return '<button role="menuitem" class="' + (m === it.min ? 'on' : '') + '" data-act="setdur" data-id="' + esc(id) + '" data-min="' + m + '">' + durLabel(m) + '</button>'; }).join('') + '</div>';
   }
   function closeMenu() { document.getElementById('menu').innerHTML = ''; }
+  function calStatus() {
+    return S.cal.state === 'ok' ? 'Calendar connected (' + S.events.length + ' appointments this week).' :
+      S.cal.state === 'off' ? 'Calendar not set up yet.' : S.cal.state === 'error' ? S.cal.msg : 'Checking the calendar…';
+  }
 
   /* ---------- pointer drag: reorder, schedule, unschedule ---------- */
   function clearMarks() {
     document.querySelectorAll('.line').forEach(function (n) { n.remove(); });
     document.querySelectorAll('.droptarget').forEach(function (n) { n.classList.remove('droptarget'); });
+    document.querySelectorAll('.day.drop').forEach(function (n) { n.classList.remove('drop'); });
   }
   function targetAt(x, y) {
     var el = document.elementFromPoint(x, y); if (!el) return null;
+    var dayEl = el.closest('[data-day]');
+    if (dayEl) return { zone: 'day', day: dayEl.getAttribute('data-day'), el: dayEl };
     var listEl = document.getElementById('list'), bkEl = document.getElementById('backlog');
     var rows = Array.prototype.slice.call(listEl.querySelectorAll('[data-row]')).filter(function (r) { return r.getAttribute('data-row') !== drag.id; });
-    if (listEl.contains(el) || el.closest('.tmpadd') || (el.closest('[aria-label="Today list"]'))) {
+    if (listEl.contains(el) || el.closest('.tmpadd') || el.closest('.listpane')) {
       var idx = rows.length;
       for (var i = 0; i < rows.length; i++) { var b = rows[i].getBoundingClientRect(); if (y < b.top + b.height / 2) { idx = i; break; } }
       return { zone: 'list', index: idx, rows: rows };
     }
-    if (bkEl.contains(el) || el.closest('[aria-label="Next actions"]')) return { zone: 'bk' };
+    if (bkEl.contains(el) || el.closest('.bkpane')) return { zone: 'bk' };
     return null;
   }
   function markTarget(tg) {
     clearMarks(); if (!tg) return;
+    if (tg.zone === 'day') { if (drag.kind !== 'tmp') tg.el.classList.add('drop'); return; }
     if (tg.zone === 'list') {
       var line = document.createElement('div'); line.className = 'line';
       var listEl = document.getElementById('list');
@@ -909,7 +1220,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       var lrow = e.target.closest && e.target.closest('.row');
       if (!lrow || e.pointerType === 'mouse' || !S.loaded || e.target.closest('button,input,select,[data-pill]')) return;
       var lid = lrow.getAttribute('data-row') || lrow.getAttribute('data-bk');
-      if (!lid) return;
+      if (!lid || lrow.getAttribute('data-kind') === 'ev') return;
       var cancelLp = function () { if (lp) { clearTimeout(lp.timer); clearTimeout(lp.pressTimer); lp.row.classList.remove('pressing'); lp = null; } };
       cancelLp();
       lp = { id: lid, src: lrow.hasAttribute('data-row') ? 'list' : 'bk', row: lrow, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, cancel: cancelLp };
@@ -978,6 +1289,11 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     clearMarks();
     if (!d.started || cancelled || !d.target) { render(); return; }
     var tg = d.target;
+    if (tg.zone === 'day') {
+      if (d.kind === 'tmp') { toast('Temp tasks stay on their own day.'); render(); return; }
+      if (tg.day === S.date) { if (d.src === 'bk') addFromBacklog(d.id, null); else render(); return; }
+      moveToDay(d.id, tg.day); return;
+    }
     if (d.src === 'bk' && tg.zone === 'list') { addFromBacklog(d.id, tg.index); return; }
     if (d.src === 'list' && tg.zone === 'list') {
       var it = items().filter(function (x) { return x.id === d.id; })[0];
@@ -1021,13 +1337,16 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       case 'sheet-bg': if (e.target === el) closeSheet(); break;
       case 'confirm-replace': case 'confirm-plain':
         var pend = S.sheet; closeSheet(); if (pend) accept(pend.id, act === 'confirm-replace' ? 'replace' : 'plain'); break;
-      case 'refresh': load(); loadLocal(); break;
+      case 'refresh': load(true); loadLocal(); break;
+      case 'day': switchDay(el.getAttribute('data-day')); break;
       case 'reload': location.reload(); break;
-      case 'status': toast(S.todoist.state === 'ok' ? 'Todoist connected' + (S.store.state === 'ok' ? '. Temp tasks are saving.' : '. ' + S.store.msg) + ' ' + VERSION : (S.todoist.msg || 'Checking Todoist…')); break;
+      case 'status': toast(S.todoist.state === 'ok' ? 'Todoist connected' + (S.store.state === 'ok' ? '. Temp tasks are saving.' : '. ' + S.store.msg) + ' ' + calStatus() + ' ' + VERSION : (S.todoist.msg || 'Checking Todoist…')); break;
       case 'tick': tick(id); break;
-      case 'add': addFromBacklog(id, null); if (window.innerWidth <= 860) toast('Added to Today.'); break;
+      case 'add': addFromBacklog(id, null); if (window.innerWidth <= 860) toast('Added to ' + dayInline(S.date) + '.'); break;
       case 'replan': replanFromNow(); break;
       case 'undo-replan': undoReplan(); break;
+      case 'rollover': rollOver(); break;
+      case 'undo-roll': undoRoll(); break;
       case 'overdue': S.overdueOpen = !S.overdueOpen; render(); break;
       case 'setdur': closeMenu(); resize(id, +el.getAttribute('data-min')); break;
       case 'deltmp': S.local.temps = S.local.temps.filter(function (x) { return x.id !== id; }); saveLocal(); render(); break;
@@ -1046,14 +1365,13 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var title = f.title.value.trim(); if (!title) return;
     var x = { id: genId(), title: title, min: +f.min.value || 30, start: 0, done: false };
     S.local.temps.push(x);
-    var n = items().filter(function (y) { return y.id !== x.id; }).length;
-    place({ kind: 'tmp', id: x.id, x: x, title: title, min: x.min, start: 0 }, n);
+    place({ kind: 'tmp', id: x.id, x: x, title: title, min: x.min, start: 0 }, endIndex(x.id));
     f.title.value = '';
   });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible') return;
     checkVersion();
-    if (Date.now() - S.loadedAt > 30000) { var nd = todayISO() !== S.date; load(); if (nd) loadLocal(); }
+    if (rollDay() || Date.now() - S.loadedAt > 30000) load();
   });
   /* A home-screen app can sit in the background for days still running the
      page it first loaded, so new features never arrive. On coming back,
@@ -1074,11 +1392,11 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   document.getElementById('ver').textContent = VERSION;
   S.todoist = { state: 'checking', msg: '' };
   render();
-  S.date = todayISO();
+  S.today = S.date = todayISO();
   loadLocal(); loadProjects(); load();
   /* Never redraw under someone editing a proposal or using the chooser. */
   function busy() { var a = document.activeElement; return !!(S.sheet || (a && a.closest && a.closest('.prop'))); }
-  setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.date) { load(); loadLocal(); } else if (Date.now() - S.loadedAt > 120000) { load(); checkVersion(); } else render(); } }, 60000);
+  setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.today) { load(); } else if (Date.now() - S.loadedAt > 120000) { load(); checkVersion(); } else render(); } }, 60000);
 })();
 </script>
 </body>
