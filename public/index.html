@@ -162,7 +162,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.1 · 7 November 2026';
+  var VERSION = 'Docket v3.1.1 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -514,7 +514,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     if (!s) { el.innerHTML = ''; return; }
     var html = '<div class="scrim" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Next action">';
     if (s.mode === 'confirm') {
-      html += '<h3>Replace the next action?</h3><p>“' + esc(s.cur.content) + '” is already next for ' + esc(projName(s.pid)) + '.</p>' +
+      html += '<h3>Replace the next action?</h3><p>“' + esc(s.cur.content) + '”' + (s.count > 1 ? ' and ' + (s.count - 1) + ' other' + (s.count > 2 ? 's' : '') + ' are' : ' is') + ' already next for ' + esc(projName(s.pid)) + '.</p>' +
         '<div class="foot2"><button class="btn" data-act="confirm-plain">Keep as ordinary task</button><button class="btn dark" data-act="confirm-replace">Replace</button></div>';
     } else {
       var p = S.projects[s.pid] || {};
@@ -536,6 +536,16 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     el.innerHTML = html + '</div></div>';
   }
   function withoutNext(t) { return (t.labels || []).filter(function (l) { return l !== 'next'; }); }
+  /* Every task in a project that carries `next` apart from one, so a new
+     choice clears them all, not just the first (some projects have several). */
+  function othersNext(pid, exceptId, list) {
+    var seen = {}, out = [];
+    (list || []).concat(S.nexts).forEach(function (t) {
+      if (t.projectId === pid && t.id !== exceptId && hasLabel(t, 'next') && !seen[t.id]) { seen[t.id] = 1; out.push(t); }
+    });
+    return out;
+  }
+  function clearOps(list) { return list.map(function (c) { return { op: 'update', id: c.id, labels: withoutNext(c) }; }); }
   function sendOps(ops, okMsg, onFail) {
     return api('/api/ops', { method: 'POST', body: { ops: ops }, timeout: 25000 }).then(function (r) {
       if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
@@ -548,18 +558,15 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     var s = S.sheet; if (!s) return;
     var t = s.tasks.filter(function (x) { return x.id === id; })[0]; if (!t) return;
     if (hasLabel(t, 'next')) { closeSheet(); return; }
-    var cur = s.tasks.filter(function (x) { return x.id !== id && hasLabel(x, 'next'); })[0] || nextOf(s.pid, id);
-    var ops = [];
-    if (cur) ops.push({ op: 'update', id: cur.id, labels: withoutNext(cur) });
+    var others = othersNext(s.pid, id, s.tasks);
+    var ops = clearOps(others);
     ops.push({ op: 'update', id: id, labels: (t.labels || []).concat(['next']) });
     closeSheet();
-    sendOps(ops, '“' + t.content + '” is now next' + (cur ? ', instead of “' + cur.content + '”.' : '.'));
+    sendOps(ops, '“' + t.content + '” is now next' + (others.length === 1 ? ', instead of “' + others[0].content + '”.' : others.length ? ', instead of ' + others.length + ' others.' : '.'));
   }
   function addNext(title) {
     var s = S.sheet; if (!s || !title) return;
-    var cur = s.tasks.filter(function (x) { return hasLabel(x, 'next'); })[0] || nextOf(s.pid);
-    var ops = [];
-    if (cur) ops.push({ op: 'update', id: cur.id, labels: withoutNext(cur) });
+    var ops = clearOps(othersNext(s.pid, null, s.tasks));
     ops.push({ op: 'add', content: title, projectId: s.pid, labels: ['next'] });
     closeSheet();
     sendOps(ops, 'Added “' + title + '” as next.');
@@ -596,11 +603,10 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     if (!content) { toast('Give the task some words first.'); return; }
     var pid = ed.project || t.projectId, wantNext = !!ed.next && how !== 'plain';
     var cur = wantNext ? nextOf(pid) : null;
-    if (wantNext && cur && how !== 'replace') { S.sheet = { mode: 'confirm', pid: pid, id: id, cur: cur }; renderSheet(); return; }
+    if (wantNext && cur && how !== 'replace') { S.sheet = { mode: 'confirm', pid: pid, id: id, cur: cur, count: othersNext(pid, id).length }; renderSheet(); return; }
     var labels = withoutNext(t).filter(function (l) { return l !== 'proposed'; });
     if (wantNext) labels.push('next');
-    var ops = [];
-    if (cur) ops.push({ op: 'update', id: cur.id, labels: withoutNext(cur) });
+    var ops = wantNext ? clearOps(othersNext(pid, id)) : [];
     ops.push({ op: 'update', id: id, content: content, labels: labels });
     if (pid !== t.projectId) ops.push({ op: 'move', id: id, projectId: pid });
     S.proposed = S.proposed.filter(function (x) { return x.id !== id; }); delete S.propEdits[id]; render();
