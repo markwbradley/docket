@@ -189,7 +189,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.4.2 · 7 November 2026';
+  var VERSION = 'Docket v3.4.3 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -596,18 +596,17 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     toast('Times put back.');
   }
   /* ---------- end of the day: what's left moves to the next day ---------- */
-  /* Unfinished tasks in the list keep their order and length and line up
-     after the next day's timed tasks, clear of its appointments. Tasks due
-     this day without a time move too. Repeating tasks stay put, so a missed
-     habit isn't quietly skipped. Temp tasks go with the rest. */
+  /* Only the unfinished tasks in the list move: they keep their order and
+     length and line up after the next day's timed tasks, clear of its
+     appointments. Tasks due this day without a time stay where they are, on
+     the left. Repeating tasks stay put, so a missed habit isn't quietly
+     skipped. Temp tasks go with the rest. */
   function rollPlan() {
     var open = items().filter(function (x) { return !x.done && x.kind !== 'ev'; });
-    var untimedHere = function (t) { return t.dueDate === S.date && live(t) && !hasLabel(t, 'proposed') && !S.pendDone[t.id]; };
     return {
       to: addDays(S.date, 1),
       timed: open.filter(function (x) { return x.kind === 'tmp' || !x.recurring; }),
-      untimed: S.tasks.filter(function (t) { return untimedHere(t) && !t.recurring; }),
-      stay: open.filter(function (x) { return x.kind === 'td' && x.recurring; }).length + S.tasks.filter(function (t) { return untimedHere(t) && t.recurring; }).length
+      stay: open.filter(function (x) { return x.kind === 'td' && x.recurring; }).length
     };
   }
   function changeTemps(day, fn) {
@@ -633,7 +632,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     if (!S.loaded) { toast('Still loading from Todoist. Try again once your tasks appear.'); return; }
     if (rolling) return;
     var r = rollPlan(), from = S.date, to = r.to;
-    if (!r.timed.length && !r.untimed.length) { toast('Nothing left to move.'); return; }
+    if (!r.timed.length) { toast('Nothing left to move.'); return; }
     rolling = true;
     tempsOf(to).then(function (toTemps) {
       rolling = false;
@@ -653,11 +652,6 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       if (!it.hasDur) t.duration = todoistDur(it.min);
       S.pend[t.id] = { dueDate: t.dueDate, duration: it.hasDur ? null : t.duration, at: Date.now() };
       writes.push({ id: t.id, date: t.dueDate, durationMin: it.hasDur ? null : it.min, recurring: false, string: '' });
-    });
-    r.untimed.forEach(function (t) {
-      undo.tasks.push({ t: t, dueDate: t.dueDate, duration: t.duration });
-      t.dueDate = to; S.pend[t.id] = { dueDate: to, duration: null, at: Date.now() };
-      writes.push({ id: t.id, date: to, durationMin: null, recurring: false, string: '' });
     });
     if (temps.length) {
       var ids = {}; temps.forEach(function (x) { ids[x.id] = true; });
@@ -1144,11 +1138,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var ls = document.getElementById('listsum');
     ls.textContent = open.length ? durShort(left) + (isToday() ? ' left · ' : ' planned · ') + endTxt + (late ? ' · ' + late + ' behind' : '') : '';
     ls.className = (soonest != null && soonest > planEnd) || late ? 'behind' : '';
-    var rp = S.loaded && S.date < lastDay() ? rollPlan() : null, nRoll = rp ? rp.timed.length + rp.untimed.length : 0;
-    /* Say both parts: the unfinished plan, and what is due this day without a time (listed on the left). */
-    var rollTxt = !nRoll ? '' : 'Move ' + (rp.timed.length ? rp.timed.length + ' unfinished' : '') + (rp.timed.length && rp.untimed.length ? ' and ' : '') +
-      (rp.untimed.length ? rp.untimed.length + ' due ' + dayInline(S.date) : '') + ' to ' + dayInline(rp.to) + ' →';
-    document.getElementById('roll').innerHTML = nRoll ? '<button class="btn" data-act="rollover" title="Moves every unfinished task here, and anything due this day without a time, to the next day. Repeating tasks stay.">' + esc(rollTxt) + '</button>' : '';
+    var rp = S.loaded && S.date < lastDay() ? rollPlan() : null, nRoll = rp ? rp.timed.length : 0;
+    document.getElementById('roll').innerHTML = nRoll ? '<button class="btn" data-act="rollover" title="Moves every unfinished task in this list to the next day. Tasks due this day without a time stay where they are. Repeating tasks stay.">Move ' + nRoll + ' unfinished to ' + esc(dayInline(rp.to)) + ' →</button>' : '';
     document.getElementById('bar').style.width = (tasks.length && isToday() ? Math.round(doneN / tasks.length * 100) : 0) + '%';
 
     captureProps();
