@@ -87,8 +87,10 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
 .menu{position:fixed;z-index:60;background:#FFFFFF;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(27,31,42,.18);padding:6px;display:grid;grid-template-columns:repeat(4,auto);gap:4px}
 .menu button{border:1px solid var(--line);background:#FFFFFF;border-radius:8px;padding:7px 9px;font-size:13px;font-weight:550}
 .menu button.on{background:var(--blue);border-color:var(--blue);color:#FFFFFF}
-#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:70}
-#toast div{background:var(--ink);color:#FFFFFF;border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:88vw}
+#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:90}
+#toast div{background:var(--ink);color:#FFFFFF;border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:88vw;transition:opacity 1s ease}
+#toast div.fade{opacity:0}
+body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 .foot{max-width:1180px;margin:0 auto;padding:0 16px 24px;color:var(--muted);font-size:11px}
 /* v3.1: phone tabs, next-action groups, proposals, the chooser sheet */
 .tabs{display:none}
@@ -123,7 +125,10 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
 @media (min-width:861px){.scrim{align-items:center}}
 .sheet{background:#FFFFFF;width:min(560px,100%);max-height:86vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(27,31,42,.2)}
 @media (min-width:861px){.sheet{border-radius:16px}}
-.sheet h3{margin:0 0 2px;font-size:16px}
+.sheet h3{margin:0 0 2px;font-size:16px;flex:1}
+.sheet .hd{display:flex;align-items:flex-start;gap:10px}
+.sheet .xbtn{flex-shrink:0;width:34px;height:34px;border:0;border-radius:50%;background:var(--line2);color:var(--soft);font-size:20px;line-height:1;padding:0;margin:-4px -4px 0 0}
+.sheet .foot2 .lat{margin-right:auto;align-self:center;font-size:12px;color:var(--muted)}
 .sheet .oc{font-size:12px;color:var(--muted);margin-bottom:12px}
 .sheet .opt{width:100%;text-align:left;display:flex;gap:8px;align-items:center;border:1px solid var(--line);background:#FFFFFF;border-radius:10px;padding:9px 10px;margin-bottom:6px}
 .sheet .opt.cur{border-color:#F0B9C9;background:#FDF3F6}
@@ -162,12 +167,14 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.1.1 · 7 November 2026';
+  var VERSION = 'Docket v3.2 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
   var CARET = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var PRESETS = [15, 30, 45, 60, 90, 120, 180, 240];
+  var BACK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+  var UNDO_MS = 8000;
 
   var S = {
     date: todayISO(), tasks: [], projects: {}, local: { temps: [], done: [] },
@@ -176,7 +183,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     overdueOpen: false,
     pend: {}, pendDone: {},
     /* v3.1 */
-    nexts: [], proposed: [], tab: 'today', sheet: null, dismissing: {}, origDue: {}
+    nexts: [], proposed: [], tab: 'today', sheet: null, dismissing: {}
   };
   var PEND_MS = 180000;
   /* Changes sent to Todoist but not yet seen in a read: keep showing them,
@@ -222,10 +229,15 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     return t > 0 ? t : null;
   }
   function round5(m) { return Math.round(m / 5) * 5; }
-  function toast(msg, action) {
+  var toastFade = null;
+  function toast(msg, action, ms) {
     var el = document.getElementById('toast');
     el.innerHTML = '<div>' + esc(msg) + (action ? '<button class="tbtn" data-act="' + action.act + '"' + (action.id ? ' data-id="' + esc(action.id) + '"' : '') + '>' + esc(action.label) + '</button>' : '') + '</div>';
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.innerHTML = ''; }, action ? 9000 : 4500);
+    ms = ms || (action ? 9000 : 4500);
+    clearTimeout(toastTimer); clearTimeout(toastFade);
+    /* Fade over the last second, then go. */
+    toastFade = setTimeout(function () { var d = el.firstChild; if (d) d.classList.add('fade'); }, ms - 1000);
+    toastTimer = setTimeout(function () { el.innerHTML = ''; }, ms);
   }
   /* Full project name, area first: "OTH › Upkeep", not just "Upkeep". */
   function projName(pid) {
@@ -449,7 +461,9 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
   }
   function addFromBacklog(id, index) {
     var t = findTask(id); if (!t) return;
-    if (S.tasks.indexOf(t) < 0) { S.origDue[id] = t.dueDate || null; S.tasks.push(t); }
+    S.local.orig = S.local.orig || {};
+    if (!(id in S.local.orig) && timeOf(t) == null) S.local.orig[id] = t.dueDate || null;
+    if (S.tasks.indexOf(t) < 0) S.tasks.push(t);
     var m = parseDuration(t.duration);
     var entry = { kind: 'td', id: id, t: t, title: t.content, min: m || DEF_MIN, hasDur: !!m, fromBacklog: true, start: 0 };
     if (index == null) index = items().filter(function (x) { return x.id !== id; }).length;
@@ -458,13 +472,21 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
   function unschedule(id) {
     var t = S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
     if (t.recurring) { toast('“' + t.content + '” repeats, so its time can only be removed in Todoist.'); render(); return; }
-    var before = t.dueDate;
-    /* A next action that had no date before Docket gave it a time goes back to none. */
-    var back = (id in S.origDue && !S.origDue[id] && hasLabel(t, 'next')) ? null : S.date;
+    var before = t.dueDate, orig = S.local.orig || {};
+    /* Back where it came from: no date, its old date, or (if Docket never
+       scheduled it) a next action loses its date and anything else stays
+       due today without a time. Never back onto a time today. */
+    var back = (id in orig) ? orig[id] : (hasLabel(t, 'next') ? null : S.date);
+    if (back && back.slice(0, 10) === S.date) back = S.date;
     t.dueDate = back; S.pend[id] = { dueDate: back, duration: null, at: Date.now() };
-    if (!back) S.tasks = S.tasks.filter(function (y) { return y.id !== id; });
+    if (!back || back.slice(0, 10) > S.date) S.tasks = S.tasks.filter(function (y) { return y.id !== id; });
+    delete orig[id]; saveLocal();
     render();
-    api('/api/unschedule', { method: 'POST', body: { id: id, date: back } }).then(function (r) { if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error }; }).catch(function (e) { delete S.pend[id]; t.dueDate = before; if (S.tasks.indexOf(t) < 0) S.tasks.push(t); render(); toast('Not changed in Todoist. ' + advice(e)); });
+    var where = !back ? (hasLabel(t, 'next') ? 'Back in Next actions.' : 'Back to no date.') : back === S.date ? 'Back in Due today.' : back < S.date ? 'Back to overdue (' + fmtDate(back.slice(0, 10)) + ').' : 'Back to ' + fmtDate(back.slice(0, 10)) + '.';
+    api('/api/unschedule', { method: 'POST', body: { id: id, date: back } }).then(function (r) {
+      if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
+      toast(where);
+    }).catch(function (e) { delete S.pend[id]; t.dueDate = before; if (S.tasks.indexOf(t) < 0) S.tasks.push(t); render(); toast('Not changed in Todoist. ' + advice(e)); });
   }
   function tick(id) {
     var it = items().filter(function (x) { return x.id === id; })[0];
@@ -484,6 +506,8 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     saveLocal(); render();
     api('/api/complete', { method: 'POST', body: { ids: [id] } }).then(function (r) {
       if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
+      /* A short-lived way back. Repeating tasks have already moved on, so no undo for those. */
+      if (!t.recurring) toast('Done: “' + t.content + '”.', { act: 'undo-tick', label: 'Undo', id: id }, UNDO_MS);
       /* A next action is done: ask what comes after it, unless the project already has one. */
       var p = S.projects[t.projectId];
       if (hasLabel(t, 'next') && p && !p.inboxProject && !nextOf(t.projectId, id)) openSheet(t.projectId, 'after', t);
@@ -491,6 +515,17 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
       delete S.pendDone[id]; if (wasToday) S.tasks.push(t); if (wasNext) S.nexts.push(t); S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
       toast('Not completed in Todoist. ' + advice(e));
     });
+  }
+
+  function undoTick(id) {
+    clearTimeout(toastTimer); clearTimeout(toastFade); document.getElementById('toast').innerHTML = '';
+    if (S.sheet && S.sheet.done && S.sheet.done.id === id) closeSheet();
+    delete S.pendDone[id];
+    S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
+    api('/api/reopen', { method: 'POST', body: { ids: [id] } }).then(function (r) {
+      if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
+      toast('Back on your list.'); load();
+    }).catch(function (e) { toast('Not reopened in Todoist. ' + advice(e)); });
   }
 
   /* ---------- choosing a project's next action ---------- */
@@ -511,6 +546,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
   function closeSheet() { S.sheet = null; renderSheet(); }
   function renderSheet() {
     var el = document.getElementById('sheet'), s = S.sheet;
+    document.body.classList.toggle('sheet-open', !!s);
     if (!s) { el.innerHTML = ''; return; }
     var html = '<div class="scrim" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Next action">';
     if (s.mode === 'confirm') {
@@ -518,11 +554,12 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
         '<div class="foot2"><button class="btn" data-act="confirm-plain">Keep as ordinary task</button><button class="btn dark" data-act="confirm-replace">Replace</button></div>';
     } else {
       var p = S.projects[s.pid] || {};
-      html += '<h3>' + (s.mode === 'after' ? 'Done. What’s next for ' + esc(projName(s.pid)) + '?' : 'Next for ' + esc(projName(s.pid))) + '</h3>';
+      html += '<div class="hd"><h3>' + (s.mode === 'after' ? 'What’s next for ' + esc(projName(s.pid)) + '?' : 'Next for ' + esc(projName(s.pid))) + '</h3>' +
+        '<button class="xbtn" data-act="sheet-close" aria-label="Close">×</button></div>';
       html += p.outcome ? '<div class="oc">' + esc(p.outcome) + '</div>' : '<div class="oc"></div>';
       if (s.loading) html += '<div class="empty">Loading the project’s tasks…</div>';
       else if (s.error) html += '<div class="notice bad">' + esc(s.error) + '</div>';
-      else if (!s.tasks.length) html += '<div class="empty">No open tasks left in this project. Write the next one below, or leave it.</div>';
+      else if (!s.tasks.length) html += '<div class="empty">That was the last open task in this project. Write the next one below, or close this if the project is finished.</div>';
       else s.tasks.forEach(function (t) {
         var cur = hasLabel(t, 'next'), meta = [];
         if (cur) meta.push('next now');
@@ -531,7 +568,9 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
         html += '<button class="opt' + (cur ? ' cur' : '') + '" data-act="pick" data-id="' + esc(t.id) + '"><span class="tick ' + esc(t.priority || '') + '" aria-hidden="true"></span><span>' + esc(t.content) + '</span>' + (meta.length ? '<small>' + esc(meta.join(' · ')) + '</small>' : '') + '</button>';
       });
       html += '<form class="row2" data-form="sheetadd"><input name="title" placeholder="Or write a new next action" aria-label="New next action" autocomplete="off"><button class="btn" type="submit">Add</button></form>';
-      html += '<div class="foot2"><button class="btn" data-act="sheet-close">' + (s.mode === 'after' ? 'Let Claude pick' : 'Cancel') + '</button></div>';
+      var later = s.mode === 'after' && s.tasks.length;
+      html += '<div class="foot2">' + (later ? '<span class="lat">Not now and Claude picks one at the next check.</span>' : '') +
+        '<button class="btn" data-act="sheet-close">' + (s.mode === 'after' ? (later ? 'Not now' : 'Close') : 'Cancel') + '</button></div>';
     }
     el.innerHTML = html + '</div></div>';
   }
@@ -662,7 +701,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     var date = S.date;
     return api('/api/local?date=' + date).then(function (d) {
       if (date !== S.date) return;
-      S.local = { temps: d.temps || [], done: d.done || [] };
+      S.local = { temps: d.temps || [], done: d.done || [], orig: d.orig || {} };
       S.store = { state: 'ok', msg: '' };
     }, function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be loaded. ' + advice(e) }; }).then(render);
   }
@@ -670,7 +709,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     clearTimeout(saveTimer);
     var date = S.date;
     saveTimer = setTimeout(function () {
-      api('/api/local?date=' + date, { method: 'PUT', body: { temps: S.local.temps, done: S.local.done } })
+      api('/api/local?date=' + date, { method: 'PUT', body: { temps: S.local.temps, done: S.local.done, orig: S.local.orig || {} } })
         .then(function () { S.store = { state: 'ok', msg: '' }; renderStatus(); },
           function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be saved. ' + advice(e) }; renderStatus(); toast('Couldn’t save temp tasks.'); });
     }, 400);
@@ -691,7 +730,8 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
       '<div class="body"><span class="title">' + esc(it.title) + '</span>' + (meta.length ? '<span class="meta">' + meta.join(' · ') + '</span>' : '') + '</div>' +
       '<div class="right"><span class="time num">' + clock(it.start) + '–' + clock(it.start + it.min) + '</span>' +
       '<span class="pill num" data-pill="' + esc(it.id) + '" role="button" tabindex="0" aria-label="Duration ' + durLabel(it.min) + '. Drag sideways or tap to change.">' + durLabel(it.min) + '</span></div>' +
-      (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' : '') +
+      (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' :
+        (!it.done && !it.recurring ? '<button class="x" data-act="nottoday" data-id="' + esc(it.id) + '" aria-label="Not today: ' + esc(it.title) + '" title="Not today">' + BACK + '</button>' : '')) +
       '</div>';
   }
   function bkHtml(t, showProject) {
@@ -927,6 +967,8 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
         document.querySelectorAll('[data-act="tab"]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === S.tab); });
         window.scrollTo(0, 0); break;
       case 'accept': accept(id); break;
+      case 'nottoday': unschedule(id); break;
+      case 'undo-tick': undoTick(id); break;
       case 'dismiss': dismiss(id); break;
       case 'undo-dismiss': undoDismiss(id); break;
       case 'change': openSheet(el.getAttribute('data-pid'), 'change'); break;

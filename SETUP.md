@@ -41,3 +41,8 @@ iPhone: Safari → Share → Add to Home Screen.
 - Tasks labelled `proposed` (filed by the daily email sweep) show at the top with Accept and Dismiss. Dismiss deletes the task after seven seconds unless undone; the Worker refuses to delete anything not labelled `proposed`.
 - Ticking a `next` task opens a chooser for that project's next one. Making a task next where one exists asks first, then moves the label; the old task stays.
 - On a phone, Today and Next are tabs.
+
+## What v3.2 added
+- A "Not today" button (↩) on each Todoist task in the Today list puts it back where it came from: no date, its old date, or due today without a time. Docket remembers where each task came from for the day, in the same storage as temp tasks.
+- Completing a task shows Undo for eight seconds, fading out over the last one. Repeating tasks get no Undo, because Todoist has already moved them on.
+- The next-action chooser has a close button, and says Close when the project has no tasks left.

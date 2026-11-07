@@ -109,7 +109,9 @@ async function route(url, request, env) {
     if (m === 'GET') return json((await env.DOCKET.get(key, 'json')) || { temps: [], done: [] });
     if (m === 'PUT') {
       const body = await request.json();
-      await env.DOCKET.put(key, JSON.stringify({ temps: body.temps || [], done: body.done || [], updatedAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 14 });
+      /* orig: where each task Docket scheduled today was before, so "Not today" can put it back. */
+      const orig = body.orig && typeof body.orig === 'object' ? body.orig : {};
+      await env.DOCKET.put(key, JSON.stringify({ temps: body.temps || [], done: body.done || [], orig, updatedAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 14 });
       return json({ ok: true });
     }
   }
