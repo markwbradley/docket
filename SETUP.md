@@ -46,3 +46,9 @@ iPhone: Safari → Share → Add to Home Screen.
 - A "Not today" button (↩) on each Todoist task in the Today list puts it back where it came from: no date, its old date, or due today without a time. Docket remembers where each task came from for the day, in the same storage as temp tasks.
 - Completing a task shows Undo for eight seconds, fading out over the last one. Repeating tasks get no Undo, because Todoist has already moved them on.
 - The next-action chooser has a close button, and says Close when the project has no tasks left.
+
+## What v3.3 added
+
+- **Parked.** Anything under a top-level Todoist project called `Parked` is hidden from Docket: the next-action groups, Due today, Overdue, the next-action count and the project picker. It stays in Todoist untouched. Move a project back out of Parked and it reappears on the next refresh. Tasks with a time set for today still show in the Today list, because a time is a commitment.
+- **Focus.** Projects whose next action is p1 or p2 sit at the top of the Next list under Focus, p1 first. Everything else follows in Todoist order.
+- An email proposal that suggests a parked project falls back to its current project (usually Inbox).

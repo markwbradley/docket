@@ -167,7 +167,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.2 · 7 November 2026';
+  var VERSION = 'Docket v3.3 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -247,18 +247,33 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     while (q.parentId && S.projects[q.parentId] && guard++ < 5) { q = S.projects[q.parentId]; names.unshift(q.name); }
     return names.join(' › ');
   }
+  /* Anything under a top-level project called "Parked" is out of play:
+     kept in Todoist, hidden here until it is moved back out. */
+  function isParked(pid) {
+    var q = S.projects[pid], guard = 0;
+    while (q && q.parentId && S.projects[q.parentId] && guard++ < 6) q = S.projects[q.parentId];
+    return !!(q && !q.parentId && /^parked\b/i.test(q.name || ''));
+  }
+  function live(t) { return !isParked(t.projectId); }
+  function prioN(t) { return { p1: 1, p2: 2, p3: 3 }[t && t.priority] || 4; }
   function hasLabel(t, l) { return !!(t && t.labels && t.labels.indexOf(l) >= 0); }
   function findTask(id) {
     return S.tasks.filter(function (y) { return y.id === id; })[0] || S.nexts.filter(function (y) { return y.id === id; })[0] || null;
   }
   function nextOf(pid, exceptId) { return S.nexts.filter(function (t) { return t.projectId === pid && t.id !== exceptId && hasLabel(t, 'next'); })[0] || null; }
-  /* The project picker: every project, areas in their Todoist order. */
+  /* The project picker: every live project, areas in their Todoist order.
+     Parked projects are left out unless one is already selected. */
   function projectOptions(sel) {
     var all = Object.keys(S.projects).map(function (k) { return S.projects[k]; });
     var kids = {}; all.forEach(function (p) { var k = p.parentId || 'root'; (kids[k] = kids[k] || []).push(p); });
     Object.keys(kids).forEach(function (k) { kids[k].sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); });
     var out = '';
-    function walk(k) { (kids[k] || []).forEach(function (p) { out += '<option value="' + esc(p.id) + '"' + (p.id === sel ? ' selected' : '') + '>' + esc(projName(p.id)) + '</option>'; walk(p.id); }); }
+    function walk(k) {
+      (kids[k] || []).forEach(function (p) {
+        if (p.id === sel || !isParked(p.id)) out += '<option value="' + esc(p.id) + '"' + (p.id === sel ? ' selected' : '') + '>' + esc(projName(p.id)) + '</option>';
+        walk(p.id);
+      });
+    }
     walk('root');
     return out;
   }
@@ -351,10 +366,11 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     S.tasks.forEach(function (t) {
       if (timeOf(t) != null) return;
       if (hasLabel(t, 'next') || hasLabel(t, 'proposed')) return; /* shown under their project instead */
+      if (isParked(t.projectId)) return;
       var d = (t.dueDate || '').slice(0, 10);
       if (d === S.date) today.push(t); else if (d && d < S.date) over.push(t);
     });
-    var pr = function (t) { return { p1: 1, p2: 2, p3: 3 }[t.priority] || 4; };
+    var pr = prioN;
     today.sort(function (a, b) { return pr(a) - pr(b); });
     over.sort(function (a, b) { return pr(a) - pr(b) || String(b.dueDate).localeCompare(String(a.dueDate)); });
     return { today: today, over: over };
@@ -624,7 +640,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   }
   function propHtml(t) {
     var src = proposalSource(t.note), ed = (S.propEdits || {})[t.id] || {};
-    var sel = ed.project || (src.suggest && S.projects[src.suggest] ? src.suggest : t.projectId);
+    var sel = ed.project || (src.suggest && S.projects[src.suggest] && !isParked(src.suggest) ? src.suggest : t.projectId);
     return '<div class="prop" data-prop="' + esc(t.id) + '">' +
       '<input type="text" name="content" value="' + esc(ed.content != null ? ed.content : t.content) + '" aria-label="Task wording">' +
       (src.text ? '<div class="src">' + (src.url ? '<a href="' + esc(src.url) + '" target="_blank" rel="noopener">' + esc(src.text) + '</a>' : esc(src.text)) + '</div>' : '') +
@@ -680,20 +696,33 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     (function walk(k) { (kids[k] || []).forEach(function (p) { rank[p.id] = n++; walk(p.id); }); })('root');
     return rank;
   }
-  function groupsHtml() {
+  /* Live next actions grouped by project. Projects whose next action is
+     p1 or p2 come first, under Focus; the rest follow in Todoist order. */
+  function groupsHtml(heading) {
     var by = {};
-    S.nexts.forEach(function (t) { (by[t.projectId] = by[t.projectId] || []).push(t); });
+    S.nexts.filter(live).forEach(function (t) { (by[t.projectId] = by[t.projectId] || []).push(t); });
     var pids = Object.keys(by);
-    if (!pids.length) return '<div class="empty">No next actions yet. Label a task <b>next</b> in Todoist, or pick one when you tick a task off.</div>';
+    if (!pids.length) return (heading ? '<div class="sub"><span>By project</span></div>' : '') +
+      '<div class="empty">No live next actions. Label a task <b>next</b> in Todoist, or pick one when you tick a task off. Projects under Parked stay hidden.</div>';
     var rank = treeRank();
-    pids.sort(function (a, b) { return (rank[a] == null ? 1e9 : rank[a]) - (rank[b] == null ? 1e9 : rank[b]); });
-    return pids.map(function (pid) {
+    var best = {}; pids.forEach(function (pid) { best[pid] = Math.min.apply(null, by[pid].map(prioN)); });
+    var focus = function (pid) { return best[pid] <= 2 ? 0 : 1; };
+    pids.sort(function (a, b) {
+      return focus(a) - focus(b) || (focus(a) ? 0 : best[a] - best[b]) ||
+        (rank[a] == null ? 1e9 : rank[a]) - (rank[b] == null ? 1e9 : rank[b]);
+    });
+    var nFocus = pids.filter(function (pid) { return !focus(pid); }).length, out = '';
+    if (!nFocus && heading) out += '<div class="sub"><span>By project</span></div>';
+    pids.forEach(function (pid, i) {
+      if (nFocus && i === 0) out += '<div class="sub"><span>Focus · ' + nFocus + '</span></div>';
+      if (nFocus && i === nFocus && nFocus < pids.length) out += '<div class="sub"><span>Everything else</span></div>';
       var p = S.projects[pid] || {}, full = projName(pid) || 'Unknown project', cut = full.lastIndexOf(' › ');
       var head = cut > 0 ? '<span class="area">' + esc(full.slice(0, cut)) + ' ›</span><b>' + esc(full.slice(cut + 3)) + '</b>' : '<b>' + esc(full) + '</b>';
-      return '<div class="grp"><div class="gh">' + head + (p.inboxProject ? '' : '<button data-act="change" data-pid="' + esc(pid) + '">Change</button>') + '</div>' +
+      out += '<div class="grp"><div class="gh">' + head + (p.inboxProject ? '' : '<button data-act="change" data-pid="' + esc(pid) + '">Change</button>') + '</div>' +
         (p.outcome ? '<div class="oc">' + esc(p.outcome) + '</div>' : '') +
         '<div class="list">' + by[pid].map(function (t) { return bkHtml(t, false); }).join('') + '</div></div>';
-    }).join('');
+    });
+    return out;
   }
 
   /* ---------- local storage (temp tasks and today's ticked-off tasks) ---------- */
@@ -799,11 +828,10 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
         bh += '<div class="sub"><button class="' + (S.overdueOpen ? 'open' : '') + '" data-act="overdue" aria-expanded="' + S.overdueOpen + '">' + CARET + 'Overdue · ' + bk.over.length + '</button></div>';
         if (S.overdueOpen) bh += '<div class="list">' + bk.over.map(function (t) { return bkHtml(t, true); }).join('') + '</div>';
       }
-      if (S.proposed.length || bk.today.length || bk.over.length) bh += '<div class="sub"><span>By project</span></div>';
-      bh += groupsHtml();
+      bh += groupsHtml(!!(S.proposed.length || bk.today.length || bk.over.length));
     }
     document.getElementById('backlog').innerHTML = bh;
-    document.getElementById('bksum').textContent = S.loaded ? S.nexts.length + ' next' + (S.proposed.length ? ' · ' + S.proposed.length + ' proposed' : '') : '';
+    document.getElementById('bksum').textContent = S.loaded ? S.nexts.filter(live).length + ' next' + (S.proposed.length ? ' · ' + S.proposed.length + ' proposed' : '') : '';
     document.getElementById('nextbadge').innerHTML = S.proposed.length ? '<span class="badge">' + S.proposed.length + '</span>' : '';
     renderStatus();
   }
