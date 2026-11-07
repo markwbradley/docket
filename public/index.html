@@ -189,7 +189,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.4 · 7 November 2026';
+  var VERSION = 'Docket v3.4.1 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -448,6 +448,12 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var d = t.dueDate || '';
     if (d.slice(0, 10) !== S.date || d.length < 16) return null;
     return (+d.slice(11, 13)) * 60 + (+d.slice(14, 16));
+  }
+  /* Planned: has a time on one of the seven days. It lives in that day's
+     list, not in Next actions; take its time off and it comes back. */
+  function planned(t) {
+    var d = t.dueDate || '', day = d.slice(0, 10);
+    return d.length >= 16 && day >= S.today && day <= lastDay();
   }
   function items() {
     var out = [], seen = {};
@@ -973,11 +979,15 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   /* Live next actions grouped by project. Projects whose next action is
      p1 or p2 come first, under Focus; the rest follow in Todoist order. */
   function groupsHtml(heading) {
-    var by = {};
-    S.nexts.filter(live).forEach(function (t) { (by[t.projectId] = by[t.projectId] || []).push(t); });
+    var by = {}, nPlanned = 0;
+    S.nexts.filter(live).forEach(function (t) {
+      if (planned(t)) { nPlanned++; return; }
+      (by[t.projectId] = by[t.projectId] || []).push(t);
+    });
     var pids = Object.keys(by);
     if (!pids.length) return (heading ? '<div class="sub"><span>By project</span></div>' : '') +
-      '<div class="empty">No live next actions. Label a task <b>next</b> in Todoist, or pick one when you tick a task off. Projects under Parked stay hidden.</div>';
+      (nPlanned ? '<div class="empty">Every next action has a time this week, so they are all in the day lists.</div>' :
+        '<div class="empty">No live next actions. Label a task <b>next</b> in Todoist, or pick one when you tick a task off. Projects under Parked stay hidden.</div>');
     var rank = treeRank();
     var best = {}; pids.forEach(function (pid) { best[pid] = Math.min.apply(null, by[pid].map(prioN)); });
     var focus = function (pid) { return best[pid] <= 2 ? 0 : 1; };
@@ -1150,7 +1160,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       bh += groupsHtml(!!(S.proposed.length || bk.today.length || bk.over.length));
     }
     document.getElementById('backlog').innerHTML = bh;
-    document.getElementById('bksum').textContent = S.loaded ? S.nexts.filter(live).length + ' next' + (S.proposed.length ? ' · ' + S.proposed.length + ' proposed' : '') : '';
+    var liveNext = S.nexts.filter(live), nPlan = liveNext.filter(planned).length;
+    document.getElementById('bksum').textContent = S.loaded ? (liveNext.length - nPlan) + ' next' + (nPlan ? ' · ' + nPlan + ' planned' : '') + (S.proposed.length ? ' · ' + S.proposed.length + ' proposed' : '') : '';
     document.getElementById('nextbadge').innerHTML = S.proposed.length ? '<span class="badge">' + S.proposed.length + '</span>' : '';
     renderStatus();
   }
