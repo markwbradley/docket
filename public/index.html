@@ -90,6 +90,48 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
 #toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:70}
 #toast div{background:var(--ink);color:#FFFFFF;border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:88vw}
 .foot{max-width:1180px;margin:0 auto;padding:0 16px 24px;color:var(--muted);font-size:11px}
+/* v3.1: phone tabs, next-action groups, proposals, the chooser sheet */
+.tabs{display:none}
+@media (max-width:860px){
+  .tabs{display:flex;gap:6px;max-width:1180px;margin:0 auto;padding:0 12px 10px}
+  .tabs button{flex:1;border:1px solid var(--line);background:#FFFFFF;border-radius:9px;padding:8px 10px;font-weight:600;font-size:13px;color:var(--soft)}
+  .tabs button.on{background:var(--ink);border-color:var(--ink);color:#FFFFFF}
+  .wrap[data-tab="today"] .bkpane{display:none}
+  .wrap[data-tab="next"] .listpane{display:none}
+}
+.badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:#7A3EA8;color:#FFFFFF;font-size:11px;line-height:18px}
+.grp{margin:14px 0 6px}
+.grp:first-child{margin-top:0}
+.grp .gh{display:flex;align-items:baseline;gap:8px;margin:0 2px 2px}
+.grp .gh b{font-size:13px;font-weight:650}
+.grp .gh .area{color:var(--muted);font-weight:550}
+.grp .gh button{margin-left:auto;border:0;background:transparent;color:var(--blue);font-size:12px;font-weight:600;padding:0}
+.grp .oc{font-size:12px;color:var(--muted);margin:0 2px 6px;line-height:1.35}
+.chip{font-size:11px;font-weight:650;border-radius:5px;padding:0 5px;background:var(--bluebg);color:var(--blue)}
+.tag.wait{background:var(--warnbg);color:var(--warn)}
+.prop{background:#FBF8FE;border:1px solid #E4D6F2;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.prop input[type=text]{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#FFFFFF;width:100%}
+.prop .src{font-size:12px;color:var(--muted)}
+.prop .src a{color:var(--soft)}
+.prop .ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.prop select{flex:1;min-width:140px;border:1px solid var(--line);border-radius:8px;padding:6px;background:#FFFFFF}
+.prop label{font-size:13px;display:flex;gap:4px;align-items:center;color:var(--soft)}
+.prop .btn{padding:6px 10px}
+@media (max-width:860px){.prop select{flex:1 1 100%}.prop label{margin-right:auto}}
+.secth{font-size:12px;font-weight:650;color:#7A3EA8;text-transform:uppercase;letter-spacing:.04em;margin:0 2px 8px}
+.scrim{position:fixed;inset:0;background:rgba(27,31,42,.32);z-index:80;display:flex;align-items:flex-end;justify-content:center}
+@media (min-width:861px){.scrim{align-items:center}}
+.sheet{background:#FFFFFF;width:min(560px,100%);max-height:86vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(27,31,42,.2)}
+@media (min-width:861px){.sheet{border-radius:16px}}
+.sheet h3{margin:0 0 2px;font-size:16px}
+.sheet .oc{font-size:12px;color:var(--muted);margin-bottom:12px}
+.sheet .opt{width:100%;text-align:left;display:flex;gap:8px;align-items:center;border:1px solid var(--line);background:#FFFFFF;border-radius:10px;padding:9px 10px;margin-bottom:6px}
+.sheet .opt.cur{border-color:#F0B9C9;background:#FDF3F6}
+.sheet .opt small{margin-left:auto;color:var(--muted);font-size:11px;white-space:nowrap}
+.sheet .row2{display:flex;gap:6px;margin-top:10px}
+.sheet .row2 input{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+.sheet .foot2{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.sheet p{font-size:14px;margin:0 0 12px}
 </style>
 </head>
 <body>
@@ -100,25 +142,27 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     <button class="icon" data-act="refresh" aria-label="Refresh from Todoist" title="Refresh from Todoist"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg></button>
     <button class="icon" data-act="status" aria-label="Connection status" title="Connection status"><span class="dot" id="statusdot"></span></button>
   </div>
+  <div class="tabs" role="tablist"><button data-act="tab" data-tab="today" class="on" role="tab">Today</button><button data-act="tab" data-tab="next" role="tab">Next <span id="nextbadge"></span></button></div>
   <div class="bar"><i id="bar" style="width:0"></i></div>
 </header>
-<main class="wrap">
+<main class="wrap" id="wrap" data-tab="today">
   <section class="pane listpane" aria-label="Today list"><h2>Today list <small id="listsum"></small><button class="btn replan" data-act="replan" title="Line up every unfinished task back to back, starting now, in the current order">Replan from now</button></h2><div id="notice"></div><div id="list" class="list"></div>
     <form class="tmpadd" data-form="tmp"><input name="title" placeholder="Add a temp task (dog walk, wash floor)" aria-label="Temp task name" autocomplete="off"><select name="min" aria-label="How long">
       <option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option><option value="90">1 h 30</option></select><button class="btn" type="submit">Add</button></form>
     <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drag the time pill left or right to change how long, or tap it to choose. Temp tasks stay here and never go to Todoist.</p>
   </section>
-  <section class="pane bkpane" aria-label="All day"><h2>All day <small id="bksum"></small></h2><div id="backlog"></div>
-    <p class="hint">Drag a task into the Today list (press and hold on a phone), or press +, to give it a time. Drag one back here to take its time off.</p>
+  <section class="pane bkpane" aria-label="Next actions"><h2>Next actions <small id="bksum"></small></h2><div id="backlog"></div>
+    <p class="hint">Drag a task into the Today list (press and hold on a phone), or press +, to give it a time. Drag one back here to take its time off. Tick a next action and Docket asks what comes after it.</p>
   </section>
 </main>
 <div class="foot" id="ver"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="menu"></div>
+<div id="sheet"></div>
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.0 · 6 November 2026';
+  var VERSION = 'Docket v3.1 · 7 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -130,7 +174,9 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     loaded: false, loading: false, loadedAt: 0, error: null,
     todoist: { state: 'checking', msg: '' }, store: { state: 'checking', msg: '' },
     overdueOpen: false,
-    pend: {}, pendDone: {}
+    pend: {}, pendDone: {},
+    /* v3.1 */
+    nexts: [], proposed: [], tab: 'today', sheet: null, dismissing: {}, origDue: {}
   };
   var PEND_MS = 180000;
   /* Changes sent to Todoist but not yet seen in a read: keep showing them,
@@ -178,10 +224,39 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
   function round5(m) { return Math.round(m / 5) * 5; }
   function toast(msg, action) {
     var el = document.getElementById('toast');
-    el.innerHTML = '<div>' + esc(msg) + (action ? '<button class="tbtn" data-act="' + action.act + '">' + esc(action.label) + '</button>' : '') + '</div>';
+    el.innerHTML = '<div>' + esc(msg) + (action ? '<button class="tbtn" data-act="' + action.act + '"' + (action.id ? ' data-id="' + esc(action.id) + '"' : '') + '>' + esc(action.label) + '</button>' : '') + '</div>';
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.innerHTML = ''; }, action ? 9000 : 4500);
   }
-  function projName(pid) { var p = S.projects[pid]; return p && !p.inboxProject ? p.name : (p ? 'Inbox' : ''); }
+  /* Full project name, area first: "OTH › Upkeep", not just "Upkeep". */
+  function projName(pid) {
+    var p = S.projects[pid]; if (!p) return '';
+    if (p.inboxProject) return 'Inbox';
+    var names = [p.name], guard = 0, q = p;
+    while (q.parentId && S.projects[q.parentId] && guard++ < 5) { q = S.projects[q.parentId]; names.unshift(q.name); }
+    return names.join(' › ');
+  }
+  function hasLabel(t, l) { return !!(t && t.labels && t.labels.indexOf(l) >= 0); }
+  function findTask(id) {
+    return S.tasks.filter(function (y) { return y.id === id; })[0] || S.nexts.filter(function (y) { return y.id === id; })[0] || null;
+  }
+  function nextOf(pid, exceptId) { return S.nexts.filter(function (t) { return t.projectId === pid && t.id !== exceptId && hasLabel(t, 'next'); })[0] || null; }
+  /* The project picker: every project, areas in their Todoist order. */
+  function projectOptions(sel) {
+    var all = Object.keys(S.projects).map(function (k) { return S.projects[k]; });
+    var kids = {}; all.forEach(function (p) { var k = p.parentId || 'root'; (kids[k] = kids[k] || []).push(p); });
+    Object.keys(kids).forEach(function (k) { kids[k].sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); });
+    var out = '';
+    function walk(k) { (kids[k] || []).forEach(function (p) { out += '<option value="' + esc(p.id) + '"' + (p.id === sel ? ' selected' : '') + '>' + esc(projName(p.id)) + '</option>'; walk(p.id); }); }
+    walk('root');
+    return out;
+  }
+  function proposalSource(note) {
+    var line = String(note || '').split(/\n/)[0] || '';
+    var url = (line.match(/https:\/\/\S+/) || [])[0] || '';
+    var text = line.replace(/https:\/\/\S+/, '').replace(/[:\s]+$/, '');
+    var sug = (String(note || '').match(/suggest\s+([\w-]+)/) || [])[1] || '';
+    return { text: text, url: url, suggest: sug };
+  }
 
   /* ---------- Worker API ---------- */
   function advice(e) {
@@ -224,9 +299,15 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     S.loading = true; S.stalled = false; S.date = todayISO(); renderStatus();
     clearTimeout(S.stallTimer);
     S.stallTimer = setTimeout(function () { if (S.loadToken === token && S.loading) { S.stalled = true; render(); } }, 8000);
-    return api('/api/today').then(function (p) {
+    return Promise.all([api('/api/today'), api('/api/next')]).then(function (r) {
       if (S.loadToken !== token) return;
-      S.tasks = applyPending(p.tasks || []); S.error = null; S.loaded = true; S.loadedAt = Date.now();
+      S.tasks = applyPending(r[0].tasks || []);
+      var nx = applyPending(r[1].tasks || []).filter(function (t) { return !S.dismissing[t.id]; });
+      S.proposed = nx.filter(function (t) { return hasLabel(t, 'proposed'); });
+      /* A task in both lists is the same task: share one object. */
+      var byId = {}; S.tasks.forEach(function (t) { byId[t.id] = t; });
+      S.nexts = nx.filter(function (t) { return hasLabel(t, 'next') && !hasLabel(t, 'proposed'); }).map(function (t) { return byId[t.id] || t; });
+      S.error = null; S.loaded = true; S.loadedAt = Date.now();
     }, function (e) { if (S.loadToken === token) S.error = e; })
       .then(function () { if (S.loadToken !== token) return; clearTimeout(S.stallTimer); S.loading = false; S.stalled = false; render(); });
   }
@@ -257,6 +338,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     var today = [], over = [];
     S.tasks.forEach(function (t) {
       if (timeOf(t) != null) return;
+      if (hasLabel(t, 'next') || hasLabel(t, 'proposed')) return; /* shown under their project instead */
       var d = (t.dueDate || '').slice(0, 10);
       if (d === S.date) today.push(t); else if (d && d < S.date) over.push(t);
     });
@@ -366,7 +448,8 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     toast('Times put back.');
   }
   function addFromBacklog(id, index) {
-    var t = S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
+    var t = findTask(id); if (!t) return;
+    if (S.tasks.indexOf(t) < 0) { S.origDue[id] = t.dueDate || null; S.tasks.push(t); }
     var m = parseDuration(t.duration);
     var entry = { kind: 'td', id: id, t: t, title: t.content, min: m || DEF_MIN, hasDur: !!m, fromBacklog: true, start: 0 };
     if (index == null) index = items().filter(function (x) { return x.id !== id; }).length;
@@ -376,12 +459,16 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     var t = S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
     if (t.recurring) { toast('“' + t.content + '” repeats, so its time can only be removed in Todoist.'); render(); return; }
     var before = t.dueDate;
-    t.dueDate = S.date; S.pend[id] = { dueDate: S.date, duration: null, at: Date.now() }; render();
-    api('/api/unschedule', { method: 'POST', body: { id: id, date: S.date } }).then(function (r) { if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error }; }).catch(function (e) { delete S.pend[id]; t.dueDate = before; render(); toast('Not changed in Todoist. ' + advice(e)); });
+    /* A next action that had no date before Docket gave it a time goes back to none. */
+    var back = (id in S.origDue && !S.origDue[id] && hasLabel(t, 'next')) ? null : S.date;
+    t.dueDate = back; S.pend[id] = { dueDate: back, duration: null, at: Date.now() };
+    if (!back) S.tasks = S.tasks.filter(function (y) { return y.id !== id; });
+    render();
+    api('/api/unschedule', { method: 'POST', body: { id: id, date: back } }).then(function (r) { if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error }; }).catch(function (e) { delete S.pend[id]; t.dueDate = before; if (S.tasks.indexOf(t) < 0) S.tasks.push(t); render(); toast('Not changed in Todoist. ' + advice(e)); });
   }
   function tick(id) {
     var it = items().filter(function (x) { return x.id === id; })[0];
-    var bl = !it && S.tasks.filter(function (y) { return y.id === id; })[0];
+    var bl = !it && findTask(id);
     if (it && it.kind === 'tmp') { it.x.done = !it.x.done; saveLocal(); render(); return; }
     if (it && it.done) {
       S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
@@ -389,14 +476,179 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
       return;
     }
     var t = it ? it.t : bl; if (!t) return;
+    var wasToday = S.tasks.indexOf(t) >= 0, wasNext = S.nexts.indexOf(t) >= 0;
     S.tasks = S.tasks.filter(function (y) { return y.id !== id; });
+    S.nexts = S.nexts.filter(function (y) { return y.id !== id; });
     S.pendDone[id] = Date.now();
     if (it) S.local.done.push({ id: id, title: it.title, start: it.start, min: it.min, pid: it.pid, prio: it.prio });
     saveLocal(); render();
-    api('/api/complete', { method: 'POST', body: { ids: [id] } }).then(function (r) { if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error }; }).catch(function (e) {
-      delete S.pendDone[id]; S.tasks.push(t); S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
+    api('/api/complete', { method: 'POST', body: { ids: [id] } }).then(function (r) {
+      if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
+      /* A next action is done: ask what comes after it, unless the project already has one. */
+      var p = S.projects[t.projectId];
+      if (hasLabel(t, 'next') && p && !p.inboxProject && !nextOf(t.projectId, id)) openSheet(t.projectId, 'after', t);
+    }).catch(function (e) {
+      delete S.pendDone[id]; if (wasToday) S.tasks.push(t); if (wasNext) S.nexts.push(t); S.local.done = S.local.done.filter(function (d) { return d.id !== id; }); saveLocal(); render();
       toast('Not completed in Todoist. ' + advice(e));
     });
+  }
+
+  /* ---------- choosing a project's next action ---------- */
+  function openSheet(pid, mode, done) {
+    S.sheet = { pid: pid, mode: mode, done: done || null, loading: true, tasks: [] };
+    renderSheet();
+    api('/api/project-tasks?projectId=' + encodeURIComponent(pid)).then(function (r) {
+      if (!S.sheet || S.sheet.pid !== pid) return;
+      var pr = function (t) { return { p1: 1, p2: 2, p3: 3 }[t.priority] || 4; };
+      S.sheet.tasks = (r.tasks || []).filter(function (t) { return !hasLabel(t, 'proposed') && !hasLabel(t, 'backlog') && !S.pendDone[t.id]; })
+        .sort(function (a, b) {
+          var da = a.dueDate ? a.dueDate.slice(0, 10) : '9999', db = b.dueDate ? b.dueDate.slice(0, 10) : '9999';
+          return (hasLabel(b, 'next') - hasLabel(a, 'next')) || (da < db ? -1 : da > db ? 1 : 0) || pr(a) - pr(b) || (a.order || 0) - (b.order || 0);
+        });
+      S.sheet.loading = false; renderSheet();
+    }, function (e) { if (S.sheet && S.sheet.pid === pid) { S.sheet.loading = false; S.sheet.error = advice(e); renderSheet(); } });
+  }
+  function closeSheet() { S.sheet = null; renderSheet(); }
+  function renderSheet() {
+    var el = document.getElementById('sheet'), s = S.sheet;
+    if (!s) { el.innerHTML = ''; return; }
+    var html = '<div class="scrim" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Next action">';
+    if (s.mode === 'confirm') {
+      html += '<h3>Replace the next action?</h3><p>“' + esc(s.cur.content) + '” is already next for ' + esc(projName(s.pid)) + '.</p>' +
+        '<div class="foot2"><button class="btn" data-act="confirm-plain">Keep as ordinary task</button><button class="btn dark" data-act="confirm-replace">Replace</button></div>';
+    } else {
+      var p = S.projects[s.pid] || {};
+      html += '<h3>' + (s.mode === 'after' ? 'Done. What’s next for ' + esc(projName(s.pid)) + '?' : 'Next for ' + esc(projName(s.pid))) + '</h3>';
+      html += p.outcome ? '<div class="oc">' + esc(p.outcome) + '</div>' : '<div class="oc"></div>';
+      if (s.loading) html += '<div class="empty">Loading the project’s tasks…</div>';
+      else if (s.error) html += '<div class="notice bad">' + esc(s.error) + '</div>';
+      else if (!s.tasks.length) html += '<div class="empty">No open tasks left in this project. Write the next one below, or leave it.</div>';
+      else s.tasks.forEach(function (t) {
+        var cur = hasLabel(t, 'next'), meta = [];
+        if (cur) meta.push('next now');
+        if (hasLabel(t, 'waiting')) meta.push('waiting');
+        if (t.dueDate) meta.push(fmtDate(t.dueDate.slice(0, 10)));
+        html += '<button class="opt' + (cur ? ' cur' : '') + '" data-act="pick" data-id="' + esc(t.id) + '"><span class="tick ' + esc(t.priority || '') + '" aria-hidden="true"></span><span>' + esc(t.content) + '</span>' + (meta.length ? '<small>' + esc(meta.join(' · ')) + '</small>' : '') + '</button>';
+      });
+      html += '<form class="row2" data-form="sheetadd"><input name="title" placeholder="Or write a new next action" aria-label="New next action" autocomplete="off"><button class="btn" type="submit">Add</button></form>';
+      html += '<div class="foot2"><button class="btn" data-act="sheet-close">' + (s.mode === 'after' ? 'Let Claude pick' : 'Cancel') + '</button></div>';
+    }
+    el.innerHTML = html + '</div></div>';
+  }
+  function withoutNext(t) { return (t.labels || []).filter(function (l) { return l !== 'next'; }); }
+  function sendOps(ops, okMsg, onFail) {
+    return api('/api/ops', { method: 'POST', body: { ops: ops }, timeout: 25000 }).then(function (r) {
+      if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
+      if (okMsg) toast(okMsg);
+      load();
+    }, function (e) { if (onFail) onFail(); render(); toast('Not changed in Todoist. ' + advice(e)); });
+  }
+  /* Choosing in the sheet is an explicit choice, so it swaps without asking again. */
+  function pick(id) {
+    var s = S.sheet; if (!s) return;
+    var t = s.tasks.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    if (hasLabel(t, 'next')) { closeSheet(); return; }
+    var cur = s.tasks.filter(function (x) { return x.id !== id && hasLabel(x, 'next'); })[0] || nextOf(s.pid, id);
+    var ops = [];
+    if (cur) ops.push({ op: 'update', id: cur.id, labels: withoutNext(cur) });
+    ops.push({ op: 'update', id: id, labels: (t.labels || []).concat(['next']) });
+    closeSheet();
+    sendOps(ops, '“' + t.content + '” is now next' + (cur ? ', instead of “' + cur.content + '”.' : '.'));
+  }
+  function addNext(title) {
+    var s = S.sheet; if (!s || !title) return;
+    var cur = s.tasks.filter(function (x) { return hasLabel(x, 'next'); })[0] || nextOf(s.pid);
+    var ops = [];
+    if (cur) ops.push({ op: 'update', id: cur.id, labels: withoutNext(cur) });
+    ops.push({ op: 'add', content: title, projectId: s.pid, labels: ['next'] });
+    closeSheet();
+    sendOps(ops, 'Added “' + title + '” as next.');
+  }
+
+  /* ---------- proposals from the email sweep ---------- */
+  function captureProps() {
+    S.propEdits = S.propEdits || {};
+    document.querySelectorAll('[data-prop]').forEach(function (el) {
+      S.propEdits[el.getAttribute('data-prop')] = {
+        content: el.querySelector('[name=content]').value,
+        project: el.querySelector('[name=project]').value,
+        next: el.querySelector('[name=next]').checked
+      };
+    });
+  }
+  function propHtml(t) {
+    var src = proposalSource(t.note), ed = (S.propEdits || {})[t.id] || {};
+    var sel = ed.project || (src.suggest && S.projects[src.suggest] ? src.suggest : t.projectId);
+    return '<div class="prop" data-prop="' + esc(t.id) + '">' +
+      '<input type="text" name="content" value="' + esc(ed.content != null ? ed.content : t.content) + '" aria-label="Task wording">' +
+      (src.text ? '<div class="src">' + (src.url ? '<a href="' + esc(src.url) + '" target="_blank" rel="noopener">' + esc(src.text) + '</a>' : esc(src.text)) + '</div>' : '') +
+      '<div class="ctl"><select name="project" aria-label="Project">' + projectOptions(sel) + '</select>' +
+      '<label><input type="checkbox" name="next"' + (ed.next ? ' checked' : '') + '> Next</label>' +
+      '<button class="btn dark" data-act="accept" data-id="' + esc(t.id) + '">Accept</button>' +
+      '<button class="btn" data-act="dismiss" data-id="' + esc(t.id) + '">Dismiss</button></div></div>';
+  }
+  /* how: undefined on first press; 'replace' or 'plain' after the question. */
+  function accept(id, how) {
+    var t = S.proposed.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    captureProps();
+    var ed = S.propEdits[id] || {};
+    var content = String(ed.content != null ? ed.content : t.content).trim();
+    if (!content) { toast('Give the task some words first.'); return; }
+    var pid = ed.project || t.projectId, wantNext = !!ed.next && how !== 'plain';
+    var cur = wantNext ? nextOf(pid) : null;
+    if (wantNext && cur && how !== 'replace') { S.sheet = { mode: 'confirm', pid: pid, id: id, cur: cur }; renderSheet(); return; }
+    var labels = withoutNext(t).filter(function (l) { return l !== 'proposed'; });
+    if (wantNext) labels.push('next');
+    var ops = [];
+    if (cur) ops.push({ op: 'update', id: cur.id, labels: withoutNext(cur) });
+    ops.push({ op: 'update', id: id, content: content, labels: labels });
+    if (pid !== t.projectId) ops.push({ op: 'move', id: id, projectId: pid });
+    S.proposed = S.proposed.filter(function (x) { return x.id !== id; }); delete S.propEdits[id]; render();
+    sendOps(ops, 'Accepted' + (wantNext ? ' as next for ' + projName(pid) : ' into ' + projName(pid)) + '.', function () { S.proposed.push(t); });
+  }
+  var dismissTimers = {};
+  function dismiss(id) {
+    var t = S.proposed.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    captureProps();
+    S.dismissing[id] = t; S.proposed = S.proposed.filter(function (x) { return x.id !== id; }); render();
+    toast('Dismissed “' + t.content + '”.', { act: 'undo-dismiss', label: 'Undo', id: id });
+    dismissTimers[id] = setTimeout(function () {
+      delete dismissTimers[id];
+      api('/api/ops', { method: 'POST', body: { ops: [{ op: 'delete', id: id }] } }).then(function (r) {
+        if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
+        delete S.dismissing[id];
+      }, function (e) { delete S.dismissing[id]; S.proposed.push(t); render(); toast('Not dismissed in Todoist. ' + advice(e)); });
+    }, 7000);
+  }
+  function undoDismiss(id) {
+    clearTimeout(dismissTimers[id]); delete dismissTimers[id];
+    var t = S.dismissing[id]; delete S.dismissing[id];
+    if (t) { S.proposed.push(t); render(); }
+    document.getElementById('toast').innerHTML = '';
+  }
+
+  /* ---------- next actions, grouped by project ---------- */
+  function treeRank() {
+    var all = Object.keys(S.projects).map(function (k) { return S.projects[k]; }), kids = {}, rank = {}, n = 0;
+    all.forEach(function (p) { var k = p.parentId || 'root'; (kids[k] = kids[k] || []).push(p); });
+    Object.keys(kids).forEach(function (k) { kids[k].sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); });
+    (function walk(k) { (kids[k] || []).forEach(function (p) { rank[p.id] = n++; walk(p.id); }); })('root');
+    return rank;
+  }
+  function groupsHtml() {
+    var by = {};
+    S.nexts.forEach(function (t) { (by[t.projectId] = by[t.projectId] || []).push(t); });
+    var pids = Object.keys(by);
+    if (!pids.length) return '<div class="empty">No next actions yet. Label a task <b>next</b> in Todoist, or pick one when you tick a task off.</div>';
+    var rank = treeRank();
+    pids.sort(function (a, b) { return (rank[a] == null ? 1e9 : rank[a]) - (rank[b] == null ? 1e9 : rank[b]); });
+    return pids.map(function (pid) {
+      var p = S.projects[pid] || {}, full = projName(pid) || 'Unknown project', cut = full.lastIndexOf(' › ');
+      var head = cut > 0 ? '<span class="area">' + esc(full.slice(0, cut)) + ' ›</span><b>' + esc(full.slice(cut + 3)) + '</b>' : '<b>' + esc(full) + '</b>';
+      return '<div class="grp"><div class="gh">' + head + (p.inboxProject ? '' : '<button data-act="change" data-pid="' + esc(pid) + '">Change</button>') + '</div>' +
+        (p.outcome ? '<div class="oc">' + esc(p.outcome) + '</div>' : '') +
+        '<div class="list">' + by[pid].map(function (t) { return bkHtml(t, false); }).join('') + '</div></div>';
+    }).join('');
   }
 
   /* ---------- local storage (temp tasks and today's ticked-off tasks) ---------- */
@@ -436,18 +688,21 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
       (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' : '') +
       '</div>';
   }
-  function bkHtml(t) {
-    var m = parseDuration(t.duration), d = (t.dueDate || '').slice(0, 10), od = d && d < S.date;
+  function bkHtml(t, showProject) {
+    var m = parseDuration(t.duration), d = (t.dueDate || '').slice(0, 10), od = d && d < S.date, st = timeOf(t);
     var meta = [];
-    if (projName(t.projectId)) meta.push('<span>' + esc(projName(t.projectId)) + '</span>');
-    if (od) meta.push('<span class="od">' + esc(fmtDate(d)) + '</span>');
+    if (showProject !== false && projName(t.projectId)) meta.push('<span>' + esc(projName(t.projectId)) + '</span>');
+    if (st != null) meta.push('<span class="chip">Today ' + clock(st) + '</span>');
+    else if (od) meta.push('<span class="od">' + esc(fmtDate(d)) + '</span>');
+    else if (d && d !== S.date) meta.push('<span>' + esc(fmtDate(d)) + '</span>');
+    if (hasLabel(t, 'waiting')) meta.push('<span class="tag wait">Waiting</span>');
     if (m) meta.push('<span>' + durLabel(m) + '</span>');
     if (t.recurring) meta.push('<span>Repeats</span>');
     return '<div class="row" data-bk="' + esc(t.id) + '">' +
-      '<button class="grip" data-grip="bk" data-id="' + esc(t.id) + '" aria-label="Drag into the Today list: ' + esc(t.content) + '">' + GRIP + '</button>' +
+      (st == null ? '<button class="grip" data-grip="bk" data-id="' + esc(t.id) + '" aria-label="Drag into the Today list: ' + esc(t.content) + '">' + GRIP + '</button>' : '<span class="grip" aria-hidden="true"></span>') +
       '<button class="tick ' + esc(t.priority || '') + '" data-act="tick" data-id="' + esc(t.id) + '" aria-label="Mark done: ' + esc(t.content) + '"></button>' +
       '<div class="body"><span class="title">' + esc(t.content) + '</span>' + (meta.length ? '<span class="meta">' + meta.join(' · ') + '</span>' : '') + '</div>' +
-      '<button class="add" data-act="add" data-id="' + esc(t.id) + '" aria-label="Add to the end of the Today list: ' + esc(t.content) + '">+</button></div>';
+      (st == null ? '<button class="add" data-act="add" data-id="' + esc(t.id) + '" aria-label="Add to the end of the Today list: ' + esc(t.content) + '">+</button>' : '') + '</div>';
   }
   function render() {
     if (drag || scrub) return;
@@ -489,16 +744,21 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     ls.className = soonest > planEnd || late ? 'behind' : '';
     document.getElementById('bar').style.width = (list.length ? Math.round(doneN / list.length * 100) : 0) + '%';
 
+    captureProps();
     var bk = backlog(), bh = '';
     if (S.loaded) {
-      bh += '<div class="list" data-dropbk>' + (bk.today.length ? bk.today.map(bkHtml).join('') : '<div class="empty">Nothing else due today.</div>') + '</div>';
+      if (S.proposed.length) bh += '<div class="secth">From your email · ' + S.proposed.length + '</div>' + S.proposed.map(propHtml).join('');
+      if (bk.today.length) bh += '<div class="sub"><span>Due today · ' + bk.today.length + '</span></div><div class="list">' + bk.today.map(function (t) { return bkHtml(t, true); }).join('') + '</div>';
       if (bk.over.length) {
         bh += '<div class="sub"><button class="' + (S.overdueOpen ? 'open' : '') + '" data-act="overdue" aria-expanded="' + S.overdueOpen + '">' + CARET + 'Overdue · ' + bk.over.length + '</button></div>';
-        if (S.overdueOpen) bh += '<div class="list">' + bk.over.map(bkHtml).join('') + '</div>';
+        if (S.overdueOpen) bh += '<div class="list">' + bk.over.map(function (t) { return bkHtml(t, true); }).join('') + '</div>';
       }
+      if (S.proposed.length || bk.today.length || bk.over.length) bh += '<div class="sub"><span>By project</span></div>';
+      bh += groupsHtml();
     }
     document.getElementById('backlog').innerHTML = bh;
-    document.getElementById('bksum').textContent = S.loaded ? bk.today.length + ' today' + (bk.over.length ? ' · ' + bk.over.length + ' overdue' : '') : '';
+    document.getElementById('bksum').textContent = S.loaded ? S.nexts.length + ' next' + (S.proposed.length ? ' · ' + S.proposed.length + ' proposed' : '') : '';
+    document.getElementById('nextbadge').innerHTML = S.proposed.length ? '<span class="badge">' + S.proposed.length + '</span>' : '';
     renderStatus();
   }
   function renderStatus() {
@@ -530,7 +790,7 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
       for (var i = 0; i < rows.length; i++) { var b = rows[i].getBoundingClientRect(); if (y < b.top + b.height / 2) { idx = i; break; } }
       return { zone: 'list', index: idx, rows: rows };
     }
-    if (bkEl.contains(el) || el.closest('[aria-label="All day"]')) return { zone: 'bk' };
+    if (bkEl.contains(el) || el.closest('[aria-label="Next actions"]')) return { zone: 'bk' };
     return null;
   }
   function markTarget(tg) {
@@ -655,11 +915,25 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
     if (!el) return;
     var act = el.getAttribute('data-act'), id = el.getAttribute('data-id');
     switch (act) {
+      case 'tab':
+        S.tab = el.getAttribute('data-tab');
+        document.getElementById('wrap').setAttribute('data-tab', S.tab);
+        document.querySelectorAll('[data-act="tab"]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === S.tab); });
+        window.scrollTo(0, 0); break;
+      case 'accept': accept(id); break;
+      case 'dismiss': dismiss(id); break;
+      case 'undo-dismiss': undoDismiss(id); break;
+      case 'change': openSheet(el.getAttribute('data-pid'), 'change'); break;
+      case 'pick': pick(id); break;
+      case 'sheet-close': closeSheet(); break;
+      case 'sheet-bg': if (e.target === el) closeSheet(); break;
+      case 'confirm-replace': case 'confirm-plain':
+        var pend = S.sheet; closeSheet(); if (pend) accept(pend.id, act === 'confirm-replace' ? 'replace' : 'plain'); break;
       case 'refresh': load(); loadLocal(); break;
       case 'reload': location.reload(); break;
       case 'status': toast(S.todoist.state === 'ok' ? 'Todoist connected' + (S.store.state === 'ok' ? '. Temp tasks are saving.' : '. ' + S.store.msg) + ' ' + VERSION : (S.todoist.msg || 'Checking Todoist…')); break;
       case 'tick': tick(id); break;
-      case 'add': addFromBacklog(id, null); break;
+      case 'add': addFromBacklog(id, null); if (window.innerWidth <= 860) toast('Added to Today.'); break;
       case 'replan': replanFromNow(); break;
       case 'undo-replan': undoReplan(); break;
       case 'overdue': S.overdueOpen = !S.overdueOpen; render(); break;
@@ -670,9 +944,11 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
   document.addEventListener('keydown', function (e) {
     var p = e.target.closest && e.target.closest('[data-pill]');
     if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openMenu(p.getAttribute('data-pill'), p); }
-    if (e.key === 'Escape') closeMenu();
+    if (e.key === 'Escape') { closeMenu(); if (S.sheet) closeSheet(); }
   });
   document.addEventListener('submit', function (e) {
+    var sf = e.target.closest('[data-form="sheetadd"]');
+    if (sf) { e.preventDefault(); addNext(sf.title.value.trim()); return; }
     var f = e.target.closest('[data-form="tmp"]'); if (!f) return;
     e.preventDefault();
     var title = f.title.value.trim(); if (!title) return;
@@ -692,7 +968,9 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
   render();
   S.date = todayISO();
   loadLocal(); loadProjects(); load();
-  setInterval(function () { if (!drag && !scrub && document.visibilityState === 'visible') { if (todayISO() !== S.date) { load(); loadLocal(); } else if (Date.now() - S.loadedAt > 120000) load(); else render(); } }, 60000);
+  /* Never redraw under someone editing a proposal or using the chooser. */
+  function busy() { var a = document.activeElement; return !!(S.sheet || (a && a.closest && a.closest('.prop'))); }
+  setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.date) { load(); loadLocal(); } else if (Date.now() - S.loadedAt > 120000) load(); else render(); } }, 60000);
 })();
 </script>
 </body>

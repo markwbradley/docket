@@ -28,6 +28,54 @@ async function route(url, request, env) {
   const p = url.pathname, m = request.method;
   if (p === '/api/today' && m === 'GET') return json({ tasks: await todayTasks(env) });
   if (p === '/api/projects' && m === 'GET') return json({ projects: await projects(env) });
+  /* Next actions and email proposals, for the left-hand pane. */
+  if (p === '/api/next' && m === 'GET') {
+    const raw = await paged(env, '/tasks/filter?query=' + encodeURIComponent('@next | @proposed'));
+    return json({ tasks: raw.filter(t => !t.checked && !t.completed_at && !t.is_deleted).map(norm) });
+  }
+  /* One project's open tasks, for choosing its next action. */
+  if (p === '/api/project-tasks' && m === 'GET') {
+    const id = url.searchParams.get('projectId') || '';
+    if (!/^[\w-]+$/.test(id)) return json({ error: 'bad_project' }, 400);
+    const raw = await paged(env, '/tasks?project_id=' + encodeURIComponent(id));
+    return json({ tasks: raw.filter(t => !t.checked && !t.completed_at && !t.is_deleted).map(norm) });
+  }
+  /* A small, fixed set of edits: rename and relabel, move, add, and delete
+     a proposal. Delete is refused unless the task still carries `proposed`. */
+  if (p === '/api/ops' && m === 'POST') {
+    const body = await request.json();
+    const ops = Array.isArray(body.ops) ? body.ops.slice(0, 20) : [];
+    const cmds = [];
+    for (const o of ops) {
+      const id = o.id == null ? '' : String(o.id);
+      if (o.op !== 'add' && !/^[\w-]+$/.test(id)) return json({ error: 'bad_id' }, 400);
+      if (o.op === 'update') {
+        const args = { id };
+        if (typeof o.content === 'string') {
+          const c = o.content.trim();
+          if (!c || c.length > 500) return json({ error: 'bad_content' }, 400);
+          args.content = c;
+        }
+        if (Array.isArray(o.labels)) args.labels = o.labels.map(String).slice(0, 30);
+        cmds.push({ type: 'item_update', uuid: crypto.randomUUID(), args, _id: id });
+      } else if (o.op === 'move') {
+        if (!/^[\w-]+$/.test(String(o.projectId || ''))) return json({ error: 'bad_project' }, 400);
+        cmds.push({ type: 'item_move', uuid: crypto.randomUUID(), args: { id, project_id: String(o.projectId) }, _id: id });
+      } else if (o.op === 'add') {
+        const c = String(o.content || '').trim();
+        if (!c || c.length > 500 || !/^[\w-]+$/.test(String(o.projectId || ''))) return json({ error: 'bad_add' }, 400);
+        const tmp = crypto.randomUUID();
+        cmds.push({ type: 'item_add', uuid: crypto.randomUUID(), temp_id: tmp, args: { content: c, project_id: String(o.projectId), labels: Array.isArray(o.labels) ? o.labels.map(String).slice(0, 30) : [] }, _id: tmp });
+      } else if (o.op === 'delete') {
+        const t = await td(env, '/tasks/' + encodeURIComponent(id));
+        if (!(t.labels || []).includes('proposed')) return json({ error: 'not_a_proposal', message: 'Only a proposed task can be dismissed from Docket.' }, 400);
+        cmds.push({ type: 'item_delete', uuid: crypto.randomUUID(), args: { id }, _id: id });
+      } else {
+        return json({ error: 'bad_op' }, 400);
+      }
+    }
+    return json(await sync(env, cmds));
+  }
   if (p === '/api/update' && m === 'POST') {
     const body = await request.json();
     const cmds = (body.changes || []).map(c => {
@@ -45,7 +93,9 @@ async function route(url, request, env) {
   }
   if (p === '/api/unschedule' && m === 'POST') {
     const body = await request.json();
-    return json(await sync(env, [{ type: 'item_update', uuid: crypto.randomUUID(), args: { id: String(body.id), due: { date: body.date, lang: 'en' } }, _id: String(body.id) }]));
+    /* A next action that had no date goes back to having none. */
+    const due = body.date ? { date: body.date, lang: 'en' } : null;
+    return json(await sync(env, [{ type: 'item_update', uuid: crypto.randomUUID(), args: { id: String(body.id), due }, _id: String(body.id) }]));
   }
   if ((p === '/api/complete' || p === '/api/reopen') && m === 'POST') {
     const body = await request.json();
@@ -96,11 +146,24 @@ async function todayTasks(env) {
 }
 async function projects(env) {
   const raw = await paged(env, '/projects');
-  return raw.filter(p => !p.is_archived && !p.is_deleted).map(p => ({ id: p.id, name: p.name, inboxProject: !!(p.inbox_project || p.is_inbox_project) }));
+  return raw.filter(p => !p.is_archived && !p.is_deleted).map(p => ({
+    id: p.id, name: p.name, parentId: p.parent_id || null, order: p.child_order || 0,
+    inboxProject: !!(p.inbox_project || p.is_inbox_project), outcome: outcomeOf(p.description || '')
+  }));
+}
+/* The project's outcome in a line: the "What this is for" block if the old
+   four-block format is still there, otherwise the first line. */
+function outcomeOf(desc) {
+  let s = String(desc);
+  const m = s.match(/\*\*What this is for\.?\*\*\s*([\s\S]*?)(?:\n\s*\*\*|$)/i);
+  s = m ? m[1] : (s.split(/\n/).find(l => l.trim()) || '');
+  s = s.replace(/\*\*|__|`|_/g, '').replace(/\s+/g, ' ').trim();
+  if (s.length > 160) { const cut = s.slice(0, 160); s = (cut.lastIndexOf('. ') > 60 ? cut.slice(0, cut.lastIndexOf('. ') + 1) : cut.replace(/\s+\S*$/, '') + '…'); }
+  return s;
 }
 async function sync(env, cmds) {
   if (!cmds.length) return { ok: true, failures: [] };
-  const commands = cmds.map(c => ({ type: c.type, uuid: c.uuid, args: c.args }));
+  const commands = cmds.map(c => c.temp_id ? { type: c.type, uuid: c.uuid, temp_id: c.temp_id, args: c.args } : { type: c.type, uuid: c.uuid, args: c.args });
   const r = await td(env, '/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -108,7 +171,7 @@ async function sync(env, cmds) {
   });
   const st = r.sync_status || {};
   const failures = cmds.filter(c => st[c.uuid] !== 'ok').map(c => ({ id: c._id, error: st[c.uuid] && st[c.uuid].error ? st[c.uuid].error : 'not confirmed' }));
-  return { ok: !failures.length, failures };
+  return { ok: !failures.length, failures, ids: r.temp_id_mapping || {} };
 }
 
 /* The page works in London wall-clock time: "2026-11-06T12:15:00". */
@@ -132,7 +195,9 @@ function norm(t) {
   return {
     id: t.id, content: t.content, projectId: t.project_id, priority: prio, labels: t.labels || [],
     dueDate: normDue(t.due), recurring: !!(t.due && t.due.is_recurring), dueString: (t.due && t.due.string) || '',
-    duration
+    duration, order: t.child_order || 0, parentId: t.parent_id || null,
+    /* Only proposals need their note: who it came from, and the link. */
+    note: (t.labels || []).includes('proposed') ? String(t.description || '').slice(0, 400) : ''
   };
 }
 

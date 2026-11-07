@@ -35,3 +35,9 @@ iPhone: Safari → Share → Add to Home Screen.
 - `public/index.html`: the page.
 - `src/worker.js`: checks the Access sign-in on every request, calls Todoist's API with your token, and stores temp tasks in Workers KV (created automatically on first deploy, kept 14 days).
 - `wrangler.toml`: Worker settings. Secrets are never in the repository.
+
+## What v3.1 added
+- The left pane lists every task labelled `next`, under "Area › Project" headings with the project's outcome line.
+- Tasks labelled `proposed` (filed by the daily email sweep) show at the top with Accept and Dismiss. Dismiss deletes the task after seven seconds unless undone; the Worker refuses to delete anything not labelled `proposed`.
+- Ticking a `next` task opens a chooser for that project's next one. Making a task next where one exists asks first, then moves the label; the old task stays.
+- On a phone, Today and Next are tabs.
