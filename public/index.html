@@ -207,7 +207,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.6.1 · 8 November 2026';
+  var VERSION = 'Docket v3.6.2 · 8 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -1205,13 +1205,16 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var list = items(), now = isToday() ? nowMin() : null, html = '', n = 0;
     if (!S.loaded) html = '<div class="empty">' + (S.loading ? 'Loading from Todoist…' : 'Not loaded yet.') + '</div>';
     else if (!list.length) html = '<div class="empty" data-droplist>Nothing has a time yet ' + (isToday() ? 'today' : 'on ' + esc(fmtDate(S.date))) + '. Drag tasks in from Next actions.</div>';
-    else list.forEach(function (it, i) {
-      if (i > 0) {
-        var p = list[i - 1], gap = it.start - (p.start + p.min);
+    else { var reach = null; list.forEach(function (it) {
+      /* Free time runs from the latest finish so far, not from the row
+         above: an appointment inside a longer block leaves no gap. */
+      if (reach != null) {
+        var gap = it.start - reach;
         if (gap >= 15) html += '<div class="gap num">' + durShort(gap) + ' free</div>';
       }
+      reach = Math.max(reach == null ? 0 : reach, it.start + it.min);
       html += it.kind === 'ev' ? evHtml(it, now) : rowHtml(it, n++, now);
-    });
+    }); }
     document.getElementById('list').innerHTML = html;
 
     /* What is left, not what was planned: unfinished time, and (today) the
