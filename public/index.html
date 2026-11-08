@@ -193,6 +193,29 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 .row:hover .rsz::after,.rsz.on::after{opacity:1}
 .rsz.on::after{background:var(--blue)}
 @media (hover:none){.rsz::after{opacity:.7}}
+/* v3.9: on a phone the title gets the card's full width, up to three lines;
+   under it, one line with the padlock, start time, length and project.
+   ↶, × and → give way to swiping on a touch screen. */
+@media (max-width:860px){
+  .row.pl{display:grid;grid-template-columns:22px 24px 26px auto minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:8px;row-gap:4px;align-content:center;align-items:center;padding:8px 8px 8px 0}
+  .row.pl.sz{padding-bottom:12px}
+  .row.pl.tall{align-content:start;padding-top:9px}
+  .row.pl > .grip{grid-column:1;grid-row:1 / span 2;width:22px}
+  .row.pl > .n{grid-column:2;grid-row:1 / span 2}
+  .row.pl > .tick{grid-column:3;grid-row:1 / span 2}
+  .row.pl > .body{display:contents}
+  .row.pl .title{grid-column:4 / 6;grid-row:1;-webkit-line-clamp:3;line-height:1.28}
+  .row.pl .meta{grid-column:5;grid-row:2;display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row.pl > .right{grid-column:4;grid-row:2;flex-direction:row;align-items:center;gap:8px}
+  .row.pl > .x{grid-column:6;grid-row:1}
+  .row.pl > .x.fwd{grid-row:2}
+  .row.pl .te{display:none}
+  .row.pl.ev{grid-template-columns:22px auto minmax(0,1fr)}
+  .row.pl.ev .title{grid-column:2 / 4}
+  .row.pl.ev .meta{grid-column:3}
+  .row.pl.ev > .right{grid-column:2}
+}
+@media (max-width:860px) and (hover:none) and (pointer:coarse){.row.pl > .x{display:none}}
 .row.sizing{box-shadow:0 0 0 2px #C9D3F0}
 </style>
 </head>
@@ -226,7 +249,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.8 · 8 November 2026';
+  var VERSION = 'Docket v3.9 · 8 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   /* Height of a row in the day list: 2 px a minute, never shorter than a
      normal row, so an hour looks twice as long as half an hour. */
@@ -1215,10 +1238,10 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var isNow = now != null && now >= it.start && now < it.start + it.min;
     var past = now != null && it.start + it.min <= now;
     var meta = [esc(it.cal || 'Calendar')]; if (it.loc) meta.push(esc(it.loc));
-    return '<div class="row ev' + tallCls(it.min) + (isNow ? ' now' : '') + (past ? ' past' : '') + '" data-row="' + esc(it.id) + '" data-kind="ev"' + sizeAttr(it.min) + '>' +
+    return '<div class="row pl ev' + tallCls(it.min) + (isNow ? ' now' : '') + (past ? ' past' : '') + '" data-row="' + esc(it.id) + '" data-kind="ev"' + sizeAttr(it.min) + '>' +
       '<span class="grip" aria-hidden="true">' + CAL + '</span>' +
       '<div class="body"><span class="title">' + esc(it.title) + '</span><span class="meta">' + meta.join(' · ') + '</span></div>' +
-      '<div class="right"><span class="time num">' + clock(it.start) + '–' + clock(it.start + it.min) + '</span><span class="tag num">' + durLabel(it.min) + '</span></div></div>';
+      '<div class="right"><span class="time num">' + clock(it.start) + '<span class="te">–' + clock(it.start + it.min) + '</span></span><span class="tag num">' + durLabel(it.min) + '</span></div></div>';
   }
   function rowHtml(it, i, now) {
     var isNow = now != null && !it.done && now >= it.start && now < it.start + it.min;
@@ -1228,10 +1251,12 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     else if (projName(it.pid)) meta.push('<span>' + esc(projName(it.pid)) + '</span>');
     if (it.recurring) meta.push('<span>Repeats</span>');
     var locked = !it.done && isLocked(it.id), span = clock(it.start) + '–' + clock(it.start + it.min);
-    var when = it.done ? '<span class="time num">' + span + '</span>' :
+    /* The end time sits in its own span so a phone can show the start only (the pill gives the length). */
+    var spanHtml = clock(it.start) + '<span class="te">–' + clock(it.start + it.min) + '</span>';
+    var when = it.done ? '<span class="time num">' + spanHtml + '</span>' :
       '<span class="tl"><button class="lock" data-act="lock" data-id="' + esc(it.id) + '" aria-pressed="' + locked + '" aria-label="' + (locked ? 'Unlock: ' : 'Lock at ' + span + ': ') + esc(it.title) + '" title="' + (locked ? 'Locked. Tap to unlock' : 'Tap to lock at this time') + '">' + (locked ? LOCKED : UNLOCKED) + '</button>' +
-      '<button class="time num" data-act="settime" data-id="' + esc(it.id) + '" aria-label="' + span + '. Tap to set a time." title="Tap to set a time">' + span + '</button></span>';
-    return '<div class="row' + tallCls(it.min) + (it.done ? '' : ' sz') + (it.kind === 'tmp' ? ' tmp' : '') + (it.done ? ' done' : '') + (locked ? ' locked' : '') + (isNow ? ' now' : '') + (isLate ? ' late' : '') + '" data-row="' + esc(it.id) + '" data-kind="' + it.kind + '"' + sizeAttr(it.min) + '>' +
+      '<button class="time num" data-act="settime" data-id="' + esc(it.id) + '" aria-label="' + span + '. Tap to set a time." title="Tap to set a time">' + spanHtml + '</button></span>';
+    return '<div class="row pl' + tallCls(it.min) + (it.done ? '' : ' sz') + (it.kind === 'tmp' ? ' tmp' : '') + (it.done ? ' done' : '') + (locked ? ' locked' : '') + (isNow ? ' now' : '') + (isLate ? ' late' : '') + '" data-row="' + esc(it.id) + '" data-kind="' + it.kind + '"' + sizeAttr(it.min) + '>' +
       '<button class="grip" data-grip="list" data-id="' + esc(it.id) + '" aria-label="Drag to reorder ' + esc(it.title) + '">' + GRIP + '</button>' +
       '<span class="n num">' + (i + 1) + '</span>' +
       '<button class="tick ' + esc(it.prio || '') + (it.done ? ' on' : '') + '" data-act="tick" data-id="' + esc(it.id) + '" aria-label="' + (it.done ? 'Mark not done: ' : 'Mark done: ') + esc(it.title) + '">' + (it.done ? CHECK : '') + '</button>' +
