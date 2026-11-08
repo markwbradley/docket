@@ -126,7 +126,9 @@ async function route(url, request, env) {
       const body = await request.json();
       /* orig: where each task Docket scheduled today was before, so "Not today" can put it back. */
       const orig = body.orig && typeof body.orig === 'object' ? body.orig : {};
-      await env.DOCKET.put(key, JSON.stringify({ temps: body.temps || [], done: body.done || [], orig, updatedAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 14 });
+      /* locked: tasks held at their time while the rest of the day flows round them. */
+      const locked = body.locked && typeof body.locked === 'object' ? body.locked : {};
+      await env.DOCKET.put(key, JSON.stringify({ temps: body.temps || [], done: body.done || [], orig, locked, updatedAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 14 });
       return json({ ok: true });
     }
   }
