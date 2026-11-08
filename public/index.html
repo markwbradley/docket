@@ -131,6 +131,10 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 .prop select{flex:1;min-width:140px;border:1px solid var(--line);border-radius:8px;padding:6px;background:#FFFFFF}
 .prop label{font-size:13px;display:flex;gap:4px;align-items:center;color:var(--soft)}
 .prop .btn{padding:6px 10px}
+.prop .duerow{gap:12px}
+.prop input[type=date]{border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:#FFFFFF;font:inherit;font-size:13px;color:var(--ink);min-height:32px}
+.ddl{font-size:12px;font-weight:600;color:var(--warn)}
+.ddl.soon{color:var(--bad)}
 @media (max-width:860px){.prop select{flex:1 1 100%}.prop label{margin-right:auto}}
 .secth{font-size:12px;font-weight:650;color:#7A3EA8;text-transform:uppercase;letter-spacing:.04em;margin:0 2px 8px}
 .scrim{position:fixed;inset:0;background:rgba(27,31,42,.32);z-index:80;display:flex;align-items:flex-end;justify-content:center}
@@ -201,7 +205,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.5 · 8 November 2026';
+  var VERSION = 'Docket v3.6 · 8 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
@@ -378,7 +382,15 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var url = (line.match(/https:\/\/\S+/) || [])[0] || '';
     var text = line.replace(/https:\/\/\S+/, '').replace(/[:\s]+$/, '');
     var sug = (String(note || '').match(/suggest\s+([\w-]+)/) || [])[1] || '';
-    return { text: text, url: url, suggest: sug };
+    /* The sweep's suggested due date, "due 2026-11-12" on the ref line. The
+       task itself stays undated in Todoist until it is accepted. */
+    var due = (String(note || '').match(/\bdue\s+(\d{4}-\d{2}-\d{2})\b/) || [])[1] || '';
+    return { text: text, url: url, suggest: sug, due: due };
+  }
+  function deadlineHtml(t, prefix) {
+    if (!t.deadline) return '';
+    var soon = t.deadline <= addDays(S.today, 7);
+    return '<span class="ddl' + (soon ? ' soon' : '') + '">' + (prefix || 'Deadline ') + esc(fmtDate(t.deadline)) + '</span>';
   }
 
   /* ---------- Worker API ---------- */
@@ -976,16 +988,22 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       S.propEdits[el.getAttribute('data-prop')] = {
         content: el.querySelector('[name=content]').value,
         project: el.querySelector('[name=project]').value,
-        next: el.querySelector('[name=next]').checked
+        next: el.querySelector('[name=next]').checked,
+        due: el.querySelector('[name=due]').value
       };
     });
   }
+  /* The due date a proposal starts with: the sweep's suggestion, else any date the task already has. */
+  function propDue(t) { return proposalSource(t.note).due || (t.dueDate || '').slice(0, 10); }
   function propHtml(t) {
     var src = proposalSource(t.note), ed = (S.propEdits || {})[t.id] || {};
     var sel = ed.project || (src.suggest && S.projects[src.suggest] && !isParked(src.suggest) ? src.suggest : t.projectId);
+    var due = ed.due != null ? ed.due : propDue(t);
     return '<div class="prop" data-prop="' + esc(t.id) + '">' +
       '<input type="text" name="content" value="' + esc(ed.content != null ? ed.content : t.content) + '" aria-label="Task wording">' +
       (src.text ? '<div class="src">' + (src.url ? '<a href="' + esc(src.url) + '" target="_blank" rel="noopener">' + esc(src.text) + '</a>' : esc(src.text)) + '</div>' : '') +
+      '<div class="ctl duerow"><label>Due <input type="date" name="due" value="' + esc(due) + '" aria-label="Due date' + (src.due ? ', suggested ' + esc(fmtDate(src.due)) : '') + '"></label>' +
+      deadlineHtml(t) + '</div>' +
       '<div class="ctl"><select name="project" aria-label="Project">' + projectOptions(sel) + '</select>' +
       '<label><input type="checkbox" name="next"' + (ed.next ? ' checked' : '') + '> Next</label>' +
       '<button class="btn dark" data-act="accept" data-id="' + esc(t.id) + '">Accept</button>' +
@@ -1001,13 +1019,17 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var pid = ed.project || t.projectId, wantNext = !!ed.next && how !== 'plain';
     var cur = wantNext ? nextOf(pid) : null;
     if (wantNext && cur && how !== 'replace') { S.sheet = { mode: 'confirm', pid: pid, id: id, cur: cur, count: othersNext(pid, id).length }; renderSheet(); return; }
+    var due = String(ed.due != null ? ed.due : propDue(t));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) due = '';
     var labels = withoutNext(t).filter(function (l) { return l !== 'proposed'; });
     if (wantNext) labels.push('next');
     var ops = wantNext ? clearOps(othersNext(pid, id)) : [];
-    ops.push({ op: 'update', id: id, content: content, labels: labels });
+    ops.push({ op: 'update', id: id, content: content, labels: labels, due: due || null });
     if (pid !== t.projectId) ops.push({ op: 'move', id: id, projectId: pid });
     S.proposed = S.proposed.filter(function (x) { return x.id !== id; }); delete S.propEdits[id]; render();
-    sendOps(ops, 'Accepted' + (wantNext ? ' as next for ' + projName(pid) : ' into ' + projName(pid)) + '.', function () { S.proposed.push(t); });
+    var late = due && t.deadline && due > t.deadline;
+    sendOps(ops, 'Accepted' + (wantNext ? ' as next for ' + projName(pid) : ' into ' + projName(pid)) + (due ? ', due ' + fmtDate(due) : '') + '.' +
+      (late ? ' That’s after its deadline (' + fmtDate(t.deadline) + ').' : ''), function () { S.proposed.push(t); });
   }
   var dismissTimers = {};
   function dismiss(id) {
@@ -1135,6 +1157,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     if (st != null) meta.push('<span class="chip">' + esc(dayShort(S.date)) + ' ' + clock(st) + '</span>');
     else if (od) meta.push('<span class="od">' + esc(fmtDate(d)) + '</span>');
     else if (d && d !== S.date) meta.push('<span>' + esc(dayShort(d)) + ((t.dueDate || '').length >= 16 ? ' ' + t.dueDate.slice(11, 16) : '') + '</span>');
+    if (t.deadline) meta.push(deadlineHtml(t));
     if (hasLabel(t, 'waiting')) meta.push('<span class="tag wait">Waiting</span>');
     if (m) meta.push('<span>' + durLabel(m) + '</span>');
     if (t.recurring) meta.push('<span>Repeats</span>');

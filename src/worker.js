@@ -62,6 +62,12 @@ async function route(url, request, env) {
           args.content = c;
         }
         if (Array.isArray(o.labels)) args.labels = o.labels.map(String).slice(0, 30);
+        /* due: a plain date (YYYY-MM-DD) to set, or empty/null for none. Sent when a proposal is accepted. */
+        if (o.due !== undefined) {
+          if (o.due === null || o.due === '') args.due = null;
+          else if (/^\d{4}-\d{2}-\d{2}$/.test(String(o.due))) args.due = { date: String(o.due), lang: 'en' };
+          else return json({ error: 'bad_due' }, 400);
+        }
         cmds.push({ type: 'item_update', uuid: crypto.randomUUID(), args, _id: id });
       } else if (o.op === 'move') {
         if (!/^[\w-]+$/.test(String(o.projectId || ''))) return json({ error: 'bad_project' }, 400);
@@ -256,6 +262,7 @@ function norm(t) {
   return {
     id: t.id, content: t.content, projectId: t.project_id, priority: prio, labels: t.labels || [],
     dueDate: normDue(t.due), recurring: !!(t.due && t.due.is_recurring), dueString: (t.due && t.due.string) || '',
+    deadline: (t.deadline && t.deadline.date) || null,
     duration, order: t.child_order || 0, parentId: t.parent_id || null,
     /* Only proposals need their note: who it came from, and the link. */
     note: (t.labels || []).includes('proposed') ? String(t.description || '').slice(0, 400) : ''
