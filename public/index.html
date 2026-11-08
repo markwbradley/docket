@@ -44,7 +44,17 @@ h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
 .notice.info{background:var(--bluebg);color:var(--blue)}
 .btn{border:1px solid #D5DAE2;background:#FFFFFF;border-radius:9px;padding:7px 12px;font-size:13px;font-weight:550}
 .btn.dark{background:var(--ink);border-color:var(--ink);color:#FFFFFF}
-.list{display:flex;flex-direction:column;gap:6px;min-height:60px;border-radius:12px}
+.list{display:flex;flex-direction:column;gap:6px;min-height:60px;border-radius:12px;position:relative}
+#list .row{touch-action:pan-y pinch-zoom}
+.row.swiping{z-index:1;will-change:transform}
+.swipeunder{position:absolute;z-index:0;border-radius:12px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:13px;font-weight:650;color:#FFFFFF;background:#C9CED7;pointer-events:none;transition:background .12s}
+.swipeunder span{display:flex;align-items:center;gap:6px;opacity:0;transition:opacity .12s}
+.swipeunder.go-r .sl,.swipeunder.go-l .sr,.swipeunder.go-del .sr{opacity:1}
+.swipeunder.go-r{background:#9DB2E3}.swipeunder.go-r.armed{background:var(--blue)}
+.swipeunder.go-l{background:#B9C0CB}.swipeunder.go-l.armed{background:#5B6472}
+.swipeunder.go-del{background:#E4ABAB}.swipeunder.go-del.armed{background:var(--bad)}
+.swipeunder.rep{background:#D5D9E0;color:var(--soft)}
+@media (hover:none) and (pointer:coarse){.row .fwd{display:none}}
 .row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 8px 6px 0;min-height:56px;position:relative}
 .row.tmp{border-style:dashed;border-color:#C6CCD6;background:#FCFCFD}
 .row.done{background:#F1F3F5}
@@ -203,7 +213,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     <form class="tmpadd" data-form="tmp"><input name="title" placeholder="Add a temp task (dog walk, wash floor)" aria-label="Temp task name" autocomplete="off"><select name="min" aria-label="How long">
       <option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option><option value="90">1 h 30</option></select><button class="btn" type="submit">Add</button></form>
     <div class="roll" id="roll"></div>
-    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the bar at the bottom of a task up or down to change how long (each task is as tall as it is long), or tap the time pill to choose. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist.</p>
+    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the bar at the bottom of a task up or down to change how long (each task is as tall as it is long), or tap the time pill to choose. On a phone, swipe a task right to move it to the next day, or left to send it back (a temp task is removed); on a computer use → and ↶. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist.</p>
   </section>
   <section class="pane bkpane" aria-label="Next actions"><h2>Next actions <small id="bksum"></small></h2><div id="backlog"></div>
     <p class="hint">Drag a task into the day’s list (press and hold on a phone), or press +, to give it a time on the day you have chosen. Drop it on a day at the top to put it on that day instead. Drag one back here to take its time off. Tick a next action and Docket asks what comes after it.</p>
@@ -216,7 +226,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.7.1 · 8 November 2026';
+  var VERSION = 'Docket v3.8 · 8 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   /* Height of a row in the day list: 2 px a minute, never shorter than a
      normal row, so an hour looks twice as long as half an hour. */
@@ -228,6 +238,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
   var CARET = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var PRESETS = [15, 30, 45, 60, 90, 120, 180, 240];
+  var FWD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15"/><path d="M13 6l6 6-6 6"/></svg>';
   var BACK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
   var UNDO_MS = 8000;
   var LOCKED = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
@@ -264,7 +275,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   function withTimeout(promise, ms) {
     return Promise.race([promise, new Promise(function (res, rej) { setTimeout(function () { rej({ code: 'timeout' }); }, ms); })]);
   }
-  var saveTimer = null, suppressClickUntil = 0, lp = null, toastTimer = null, drag = null, scrub = null;
+  var saveTimer = null, suppressClickUntil = 0, lp = null, toastTimer = null, drag = null, scrub = null, sw = null, lastSwipe = null;
 
   /* ---------- helpers ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -794,7 +805,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   }
   /* Dropped on another day: it goes after that day's last timed task (or
      from the start of the day), clear of appointments, and keeps its length. */
-  function moveToDay(id, day) {
+  function moveToDay(id, day, undoable) {
     var t = findTask(id); if (!t) { render(); return; }
     tempsOf(day).then(function (temps) {
       var m = parseDuration(t.duration), min = m || DEF_MIN, skip = {}; skip[id] = true;
@@ -803,8 +814,71 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       if (S.tasks.indexOf(t) < 0) S.tasks.push(t);
       var ch = {}; ch[id] = { kind: 'td', id: id, t: t, title: t.content, start: start, min: min, hasDur: !!m, fromBacklog: !m, day: day };
       commit(ch);
-      toast('Moved to ' + fmtDate(day) + ', ' + clock(start) + '–' + clock(start + min) + '.');
+      toast('Moved to ' + fmtDate(day) + ', ' + clock(start) + '–' + clock(start + min) + '.', undoable ? { act: 'undo-swipe', label: 'Undo' } : null);
     });
+  }
+  /* ---------- one task off this day: swipe, or the arrow buttons ----------
+     Right (→): to the end of the next day's plan, clear of its appointments.
+     Left (↶): back where it came from (Next actions, or due without a time);
+     a temp task is removed instead. A lock on this day goes with it. Every
+     one of these can be undone from the toast. */
+  function toNextDay(id) {
+    if (!S.loaded) { toast('Still loading from Todoist.'); render(); return; }
+    var it = items().filter(function (x) { return x.id === id; })[0];
+    if (!it || it.done || it.kind === 'ev') { render(); return; }
+    var to = addDays(S.date, 1);
+    if (it.kind === 'tmp') { moveTemp(id, to); return; }
+    if (it.recurring) { toast('“' + it.title + '” repeats, so it stays. Tick it, or move it in Todoist.'); render(); return; }
+    var t = it.t, wasLocked = isLocked(id);
+    lastSwipe = { kind: 'td', t: t, dueDate: t.dueDate, duration: t.duration, locked: wasLocked, day: S.date, orig: null };
+    if (wasLocked) delete S.local.locked[id];
+    moveToDay(id, to, true);
+  }
+  function moveTemp(id, to) {
+    var from = S.date, x = S.local.temps.filter(function (y) { return y.id === id; })[0]; if (!x) { render(); return; }
+    tempsOf(to).then(function (temps) {
+      if (S.date !== from) { render(); return; }
+      var start = fit(Math.max(dayEnd(to, {}, temps), DAY_START), +x.min || DEF_MIN, to);
+      var moved = { id: x.id, title: x.title, min: +x.min || DEF_MIN, start: start, done: false };
+      lastSwipe = { kind: 'tmp', x: Object.assign({}, x), day: from, to: to, locked: isLocked(id) };
+      S.local.temps = S.local.temps.filter(function (y) { return y.id !== id; });
+      if (S.local.locked) delete S.local.locked[id];
+      saveLocal(); render();
+      changeTemps(to, function (list) { return list.filter(function (y) { return y.id !== id; }).concat([moved]); });
+      toast('Moved to ' + fmtDate(to) + ', ' + clock(start) + '–' + clock(start + moved.min) + '.', { act: 'undo-swipe', label: 'Undo' });
+    });
+  }
+  function removeTemp(id) {
+    var x = S.local.temps.filter(function (y) { return y.id === id; })[0]; if (!x) { render(); return; }
+    lastSwipe = { kind: 'tmpdel', x: Object.assign({}, x), day: S.date, locked: isLocked(id) };
+    S.local.temps = S.local.temps.filter(function (y) { return y.id !== id; });
+    if (S.local.locked) delete S.local.locked[id];
+    saveLocal(); render();
+    toast('Removed “' + x.title + '”.', { act: 'undo-swipe', label: 'Undo' });
+  }
+  function offDay(id) {
+    var it = items().filter(function (x) { return x.id === id; })[0]; if (!it || it.done) { render(); return; }
+    if (it.kind === 'tmp') removeTemp(id); else unschedule(id);
+  }
+  function undoSwipe() {
+    var u = lastSwipe; lastSwipe = null; if (!u) return;
+    clearTimeout(toastTimer); clearTimeout(toastFade); document.getElementById('toast').innerHTML = '';
+    var keepLock = function (id) { if (u.locked) { S.local.locked = S.local.locked || {}; S.local.locked[id] = true; } };
+    if (u.kind === 'tmp' || u.kind === 'tmpdel') {
+      var id = u.x.id, putBack = function (list) { return list.filter(function (y) { return y.id !== id; }).concat([u.x]); };
+      if (u.kind === 'tmp') changeTemps(u.to, function (list) { return list.filter(function (y) { return y.id !== id; }); });
+      if (S.date === u.day) { S.local.temps = putBack(S.local.temps); keepLock(id); saveLocal(); render(); }
+      else changeTemps(u.day, putBack);
+      toast('Put back.');
+      return;
+    }
+    var t = u.t, redo = [{ t: t, dueDate: t.dueDate, duration: t.duration }];
+    t.dueDate = u.dueDate; t.duration = u.duration;
+    if (S.tasks.indexOf(t) < 0) S.tasks.push(t);
+    S.pend[t.id] = { dueDate: u.dueDate, duration: null, at: Date.now() };
+    if (S.date === u.day) { if (u.orig) { S.local.orig = S.local.orig || {}; S.local.orig[t.id] = u.orig.val; } keepLock(t.id); saveLocal(); }
+    render();
+    sendMoves([{ id: t.id, date: u.dueDate, durationMin: null, recurring: false, string: '' }], redo, 'Not put back in Todoist.').then(function (ok) { if (ok) toast('Put back.'); });
   }
   /* Where a day's timed plan ends: its Todoist tasks and its temp tasks. */
   function dayEnd(day, skip, temps) {
@@ -845,7 +919,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   function unschedule(id) {
     var t = S.tasks.filter(function (y) { return y.id === id; })[0]; if (!t) return;
     if (t.recurring) { toast('“' + t.content + '” repeats, so its time can only be removed in Todoist.'); render(); return; }
-    var before = t.dueDate, orig = S.local.orig || {};
+    var before = t.dueDate, orig = S.local.orig || {}, day = S.date, wasLocked = isLocked(id), origWas = (id in orig) ? { val: orig[id] } : null;
     /* Back where it came from: no date, its old date, or (if Docket never
        scheduled it) a next action loses its date and anything else stays
        due today without a time. Never back onto a time today. */
@@ -858,7 +932,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var where = !back ? (hasLabel(t, 'next') ? 'Back in Next actions.' : 'Back to no date.') : back === S.date ? 'Back in Due ' + (isToday() ? 'today' : fmtDate(S.date)) + '.' : back < S.today ? 'Back to overdue (' + fmtDate(back.slice(0, 10)) + ').' : 'Back to ' + fmtDate(back.slice(0, 10)) + '.';
     api('/api/unschedule', { method: 'POST', body: { id: id, date: back } }).then(function (r) {
       if (r && r.failures && r.failures.length) throw { code: 'error', message: r.failures[0].error };
-      toast(where);
+      lastSwipe = before && before.length >= 16 ? { kind: 'td', t: t, dueDate: before, duration: t.duration, locked: wasLocked, day: day, orig: origWas } : null;
+      toast(where, lastSwipe ? { act: 'undo-swipe', label: 'Undo' } : null);
     }).catch(function (e) { delete S.pend[id]; t.dueDate = before; if (S.tasks.indexOf(t) < 0) S.tasks.push(t); render(); toast('Not changed in Todoist. ' + advice(e)); });
   }
   function tick(id) {
@@ -1165,6 +1240,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       '<span class="pill num" data-pill="' + esc(it.id) + '" role="button" tabindex="0" aria-label="Duration ' + durLabel(it.min) + '. Drag sideways or tap to change.">' + durLabel(it.min) + '</span></div>' +
       (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' :
         (!it.done && !it.recurring ? '<button class="x" data-act="nottoday" data-id="' + esc(it.id) + '" aria-label="' + (isToday() ? 'Not today' : 'Take the time off') + ': ' + esc(it.title) + '" title="' + (isToday() ? 'Not today' : 'Take the time off') + '">' + BACK + '</button>' : '')) +
+      (!it.done && (it.kind === 'tmp' || !it.recurring) ? '<button class="x fwd" data-act="tonext" data-id="' + esc(it.id) + '" aria-label="Move to ' + esc(dayInline(addDays(S.date, 1))) + ': ' + esc(it.title) + '" title="Move to ' + esc(dayInline(addDays(S.date, 1))) + '">' + FWD + '</button>' : '') +
       (it.done ? '' : '<span class="rsz" data-rsz="' + esc(it.id) + '" aria-hidden="true" title="Drag up or down to change how long"></span>') +
       '</div>';
   }
@@ -1417,9 +1493,13 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       scrub.el.classList.add('scrub'); scrub.el.textContent = durLabel(scrub.min);
       return;
     }
+    if (sw && e.pointerId === sw.pointerId) { e.preventDefault(); moveSwipe(e.clientX); return; }
     if (lp && e.pointerId === lp.pointerId) {
       lp.x = e.clientX; lp.y = e.clientY;
-      if (Math.abs(e.clientX - lp.x0) + Math.abs(e.clientY - lp.y0) > 10) lp.cancel();
+      var mx = e.clientX - lp.x0, my = e.clientY - lp.y0;
+      /* Mostly sideways on a task in the day's list: a swipe, not a scroll or a hold. */
+      if (lp.src === 'list' && Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my) * 1.5) { var L = lp; L.cancel(); startSwipe(L, e.clientX); return; }
+      if (Math.abs(mx) + Math.abs(my) > 10) lp.cancel();
       return;
     }
     if (!drag || e.pointerId !== drag.pointerId) return;
@@ -1435,7 +1515,53 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     drag.target = targetAt(e.clientX, e.clientY);
     markTarget(drag.target);
   });
+  /* ---------- swipe a task in the day's list (phone) ---------- */
+  function startSwipe(L, x) {
+    var row = L.row, kind = row.getAttribute('data-kind');
+    if (!S.loaded || kind === 'ev' || row.classList.contains('done')) return;
+    var it = items().filter(function (y) { return y.id === L.id; })[0]; if (!it) return;
+    var rep = it.kind === 'td' && it.recurring, next = dayInline(addDays(S.date, 1));
+    var right = rep ? 'Repeats, so it stays' : 'Move to ' + next, left = rep ? 'Repeats, so it stays' : kind === 'tmp' ? 'Remove' : isToday() ? 'Not today' : 'Take the time off';
+    var under = document.createElement('div');
+    under.className = 'swipeunder';
+    under.style.top = row.offsetTop + 'px'; under.style.left = row.offsetLeft + 'px';
+    under.style.width = row.offsetWidth + 'px'; under.style.height = row.offsetHeight + 'px';
+    under.innerHTML = '<span class="sl">' + FWD + esc(right) + '</span><span class="sr">' + esc(left) + (kind === 'tmp' && !rep ? '' : BACK) + '</span>';
+    row.parentNode.insertBefore(under, row);
+    row.classList.add('swiping');
+    try { row.setPointerCapture(L.pointerId); } catch (z) { }
+    sw = { id: L.id, row: row, under: under, kind: kind, rep: rep, x0: L.x0, dx: 0, w: row.offsetWidth, pointerId: L.pointerId, t0: Date.now() };
+    moveSwipe(x);
+  }
+  function swipeAt(s) { return Math.min(130, Math.max(80, s.w * 0.3)); }
+  function moveSwipe(x) {
+    var dx = x - sw.x0;
+    if (sw.rep) dx = dx * 0.3;
+    sw.dx = dx;
+    sw.row.style.transform = 'translateX(' + dx + 'px)';
+    var armed = !sw.rep && Math.abs(dx) >= swipeAt(sw);
+    if (armed !== sw.armed && armed && navigator.vibrate) { try { navigator.vibrate(8); } catch (z) { } }
+    sw.armed = armed;
+    sw.under.className = 'swipeunder' + (sw.rep ? ' rep' : '') + (dx > 0 ? ' go-r' : dx < 0 ? (sw.kind === 'tmp' ? ' go-del' : ' go-l') : '') + (armed ? ' armed' : '');
+  }
+  function endSwipe(cancelled) {
+    var s = sw; sw = null;
+    suppressClickUntil = Date.now() + 400;
+    var flick = Math.abs(s.dx) > 45 && Math.abs(s.dx) / Math.max(1, Date.now() - s.t0) > 0.7;
+    var go = !cancelled && !s.rep && (Math.abs(s.dx) >= swipeAt(s) || flick);
+    if (!go) {
+      s.row.style.transition = 'transform .18s ease'; s.row.style.transform = '';
+      setTimeout(function () { s.under.remove(); s.row.classList.remove('swiping'); s.row.style.transition = ''; }, 200);
+      if (s.rep && !cancelled && Math.abs(s.dx) > 20) toast('This task repeats, so it stays. Tick it, or move it in Todoist.');
+      return;
+    }
+    var dir = s.dx > 0 ? 1 : -1;
+    s.row.style.transition = 'transform .16s ease-in, opacity .16s ease-in';
+    s.row.style.transform = 'translateX(' + dir * (s.w + 24) + 'px)'; s.row.style.opacity = '0';
+    setTimeout(function () { s.under.remove(); if (dir > 0) toNextDay(s.id); else offDay(s.id); }, 170);
+  }
   function endPointer(e, cancelled) {
+    if (sw && (!e || e.pointerId === sw.pointerId)) { endSwipe(cancelled); return; }
     if (scrub && (!e || e.pointerId === scrub.pointerId)) {
       var s = scrub; scrub = null;
       if (cancelled) { render(); return; }
@@ -1479,7 +1605,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 
   /* ---------- clicks and forms ---------- */
   /* While a task is being dragged, stop the page scrolling under the finger. */
-  document.addEventListener('touchmove', function (e) { if (drag && drag.started) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', function (e) { if ((drag && drag.started) || sw) e.preventDefault(); }, { passive: false });
   document.addEventListener('contextmenu', function (e) { if (e.target.closest && e.target.closest('.row')) e.preventDefault(); });
   document.addEventListener('click', function (e) {
     if (Date.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); return; }
@@ -1495,6 +1621,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
         window.scrollTo(0, 0); break;
       case 'accept': accept(id); break;
       case 'nottoday': unschedule(id); break;
+      case 'tonext': toNextDay(id); break;
+      case 'undo-swipe': undoSwipe(); break;
       case 'undo-tick': undoTick(id); break;
       case 'dismiss': dismiss(id); break;
       case 'undo-dismiss': undoDismiss(id); break;
@@ -1516,7 +1644,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       case 'undo-roll': undoRoll(); break;
       case 'overdue': S.overdueOpen = !S.overdueOpen; render(); break;
       case 'setdur': closeMenu(); resize(id, +el.getAttribute('data-min')); break;
-      case 'deltmp': S.local.temps = S.local.temps.filter(function (x) { return x.id !== id; }); if (S.local.locked) delete S.local.locked[id]; saveLocal(); render(); break;
+      case 'deltmp': removeTemp(id); break;
       case 'lock': toggleLock(id); break;
       case 'settime': openTimeMenu(id, el); break;
     }
