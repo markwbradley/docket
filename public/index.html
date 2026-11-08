@@ -175,6 +175,15 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 .roll{margin-top:10px}
 .roll:empty{display:none}
 .roll .btn{width:100%;padding:9px 12px;color:var(--soft)}
+/* v3.7: list rows are as tall as they are long, with a bar to resize */
+.row.tall{align-items:flex-start;padding-top:9px}
+.row.sz{padding-bottom:10px}
+.rsz{position:absolute;left:50%;transform:translateX(-50%);width:min(160px,40%);bottom:-6px;height:16px;cursor:ns-resize;touch-action:none;display:flex;align-items:center;justify-content:center;z-index:3}
+.rsz::after{content:'';width:36px;height:4px;border-radius:2px;background:#AEB5C1;opacity:.45;transition:opacity .15s}
+.row:hover .rsz::after,.rsz.on::after{opacity:1}
+.rsz.on::after{background:var(--blue)}
+@media (hover:none){.rsz::after{opacity:.7}}
+.row.sizing{box-shadow:0 0 0 2px #C9D3F0}
 </style>
 </head>
 <body>
@@ -194,7 +203,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     <form class="tmpadd" data-form="tmp"><input name="title" placeholder="Add a temp task (dog walk, wash floor)" aria-label="Temp task name" autocomplete="off"><select name="min" aria-label="How long">
       <option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option><option value="90">1 h 30</option></select><button class="btn" type="submit">Add</button></form>
     <div class="roll" id="roll"></div>
-    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the time pill left or right to change how long, or tap it to choose. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist.</p>
+    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the bar at the bottom of a task up or down to change how long (each task is as tall as it is long), or tap the time pill to choose. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist.</p>
   </section>
   <section class="pane bkpane" aria-label="Next actions"><h2>Next actions <small id="bksum"></small></h2><div id="backlog"></div>
     <p class="hint">Drag a task into the day’s list (press and hold on a phone), or press +, to give it a time on the day you have chosen. Drop it on a day at the top to put it on that day instead. Drag one back here to take its time off. Tick a next action and Docket asks what comes after it.</p>
@@ -207,8 +216,14 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.6.2 · 8 November 2026';
+  var VERSION = 'Docket v3.7 · 8 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
+  /* Height of a row in the day list: 2 px a minute, never shorter than a
+     normal row, so an hour looks twice as long as half an hour. */
+  var HPX = 2, ROW_MIN = 56;
+  function rowH(min) { return Math.max(ROW_MIN, Math.round(min * HPX)); }
+  function sizeAttr(min) { var h = rowH(min); return ' style="min-height:' + h + 'px"'; }
+  function tallCls(min) { return rowH(min) > ROW_MIN ? ' tall' : ''; }
   var GRIP = '<svg width="12" height="20" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></g></svg>';
   var CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
   var CARET = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -1125,7 +1140,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var isNow = now != null && now >= it.start && now < it.start + it.min;
     var past = now != null && it.start + it.min <= now;
     var meta = [esc(it.cal || 'Calendar')]; if (it.loc) meta.push(esc(it.loc));
-    return '<div class="row ev' + (isNow ? ' now' : '') + (past ? ' past' : '') + '" data-row="' + esc(it.id) + '" data-kind="ev">' +
+    return '<div class="row ev' + tallCls(it.min) + (isNow ? ' now' : '') + (past ? ' past' : '') + '" data-row="' + esc(it.id) + '" data-kind="ev"' + sizeAttr(it.min) + '>' +
       '<span class="grip" aria-hidden="true">' + CAL + '</span>' +
       '<div class="body"><span class="title">' + esc(it.title) + '</span><span class="meta">' + meta.join(' · ') + '</span></div>' +
       '<div class="right"><span class="time num">' + clock(it.start) + '–' + clock(it.start + it.min) + '</span><span class="tag num">' + durLabel(it.min) + '</span></div></div>';
@@ -1141,7 +1156,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     var when = it.done ? '<span class="time num">' + span + '</span>' :
       '<span class="tl"><button class="lock" data-act="lock" data-id="' + esc(it.id) + '" aria-pressed="' + locked + '" aria-label="' + (locked ? 'Unlock: ' : 'Lock at ' + span + ': ') + esc(it.title) + '" title="' + (locked ? 'Locked. Tap to unlock' : 'Tap to lock at this time') + '">' + (locked ? LOCKED : UNLOCKED) + '</button>' +
       '<button class="time num" data-act="settime" data-id="' + esc(it.id) + '" aria-label="' + span + '. Tap to set a time." title="Tap to set a time">' + span + '</button></span>';
-    return '<div class="row' + (it.kind === 'tmp' ? ' tmp' : '') + (it.done ? ' done' : '') + (locked ? ' locked' : '') + (isNow ? ' now' : '') + (isLate ? ' late' : '') + '" data-row="' + esc(it.id) + '" data-kind="' + it.kind + '">' +
+    return '<div class="row' + tallCls(it.min) + (it.done ? '' : ' sz') + (it.kind === 'tmp' ? ' tmp' : '') + (it.done ? ' done' : '') + (locked ? ' locked' : '') + (isNow ? ' now' : '') + (isLate ? ' late' : '') + '" data-row="' + esc(it.id) + '" data-kind="' + it.kind + '"' + sizeAttr(it.min) + '>' +
       '<button class="grip" data-grip="list" data-id="' + esc(it.id) + '" aria-label="Drag to reorder ' + esc(it.title) + '">' + GRIP + '</button>' +
       '<span class="n num">' + (i + 1) + '</span>' +
       '<button class="tick ' + esc(it.prio || '') + (it.done ? ' on' : '') + '" data-act="tick" data-id="' + esc(it.id) + '" aria-label="' + (it.done ? 'Mark not done: ' : 'Mark done: ') + esc(it.title) + '">' + (it.done ? CHECK : '') + '</button>' +
@@ -1150,6 +1165,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       '<span class="pill num" data-pill="' + esc(it.id) + '" role="button" tabindex="0" aria-label="Duration ' + durLabel(it.min) + '. Drag sideways or tap to change.">' + durLabel(it.min) + '</span></div>' +
       (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' :
         (!it.done && !it.recurring ? '<button class="x" data-act="nottoday" data-id="' + esc(it.id) + '" aria-label="' + (isToday() ? 'Not today' : 'Take the time off') + ': ' + esc(it.title) + '" title="' + (isToday() ? 'Not today' : 'Take the time off') + '">' + BACK + '</button>' : '')) +
+      (it.done ? '' : '<span class="rsz" data-rsz="' + esc(it.id) + '" aria-hidden="true" title="Drag up or down to change how long"></span>') +
       '</div>';
   }
   function bkHtml(t, showProject) {
@@ -1322,6 +1338,17 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     } else if (drag.src === 'list' && drag.kind === 'td') document.getElementById('backlog').classList.add('droptarget');
   }
   document.addEventListener('pointerdown', function (e) {
+    var rz = e.target.closest && e.target.closest('[data-rsz]');
+    if (rz) {
+      var ri = items().filter(function (x) { return x.id === rz.getAttribute('data-rsz'); })[0];
+      if (!ri || ri.done) return;
+      e.preventDefault();
+      try { rz.setPointerCapture(e.pointerId); } catch (x) { }
+      var rrow = rz.closest('.row');
+      scrub = { v: true, id: ri.id, bar: rz, row: rrow, el: rrow.querySelector('[data-pill]'), tm: rrow.querySelector('button.time'), start: ri.start, y0: e.clientY, orig: ri.min, min: ri.min, moved: false, pointerId: e.pointerId, done: false };
+      rz.classList.add('on'); rrow.classList.add('sizing');
+      return;
+    }
     var pill = e.target.closest && e.target.closest('[data-pill]');
     if (pill) {
       var it = items().filter(function (x) { return x.id === pill.getAttribute('data-pill'); })[0];
@@ -1366,6 +1393,22 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     try { g.setPointerCapture(e.pointerId); } catch (x) { }
   });
   document.addEventListener('pointermove', function (e) {
+    if (scrub && scrub.v && e.pointerId === scrub.pointerId) {
+      var dy = e.clientY - scrub.y0;
+      if (Math.abs(dy) > 4) scrub.moved = true;
+      if (!scrub.moved) return;
+      e.preventDefault();
+      var nm = Math.max(5, Math.min(480, scrub.orig + Math.round(dy / HPX / 5) * 5));
+      if (nm !== scrub.min) {
+        scrub.min = nm;
+        scrub.row.style.minHeight = rowH(nm) + 'px';
+        scrub.row.classList.toggle('tall', rowH(nm) > ROW_MIN);
+        if (scrub.el) scrub.el.textContent = durLabel(nm);
+        if (scrub.tm) scrub.tm.textContent = clock(scrub.start) + '–' + clock(scrub.start + nm);
+      }
+      if (e.clientY > window.innerHeight - 40) window.scrollBy(0, 10);
+      return;
+    }
     if (scrub && e.pointerId === scrub.pointerId) {
       var dx = e.clientX - scrub.x0;
       if (Math.abs(dx) > 6) scrub.moved = true;
@@ -1396,6 +1439,11 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     if (scrub && (!e || e.pointerId === scrub.pointerId)) {
       var s = scrub; scrub = null;
       if (cancelled) { render(); return; }
+      if (s.v) {
+        if (s.moved) suppressClickUntil = Date.now() + 300;
+        if (s.moved && s.min !== s.orig) resize(s.id, s.min); else render();
+        return;
+      }
       if (!s.moved) { render(); if (!s.done) openMenu(s.id, document.querySelector('[data-pill="' + s.id + '"]')); return; }
       if (s.min !== s.orig && !s.done) resize(s.id, s.min); else render();
       return;
