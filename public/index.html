@@ -287,7 +287,7 @@ body.focus-open{overflow:hidden}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v4.2 · 9 November 2026';
+  var VERSION = 'Docket v4.2.1 · 9 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   /* Height of a row in the day list: 2 px a minute, never shorter than a
      normal row, so an hour looks twice as long as half an hour. */
@@ -1682,7 +1682,8 @@ body.focus-open{overflow:hidden}
       if (!lid || lrow.getAttribute('data-kind') === 'ev') return;
       var cancelLp = function () { if (lp) { clearTimeout(lp.timer); clearTimeout(lp.pressTimer); lp.row.classList.remove('pressing'); lp = null; } };
       cancelLp();
-      lp = { id: lid, src: lrow.hasAttribute('data-row') ? 'list' : 'bk', row: lrow, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, cancel: cancelLp };
+      lp = { id: lid, src: lrow.hasAttribute('data-row') ? 'list' : 'bk', row: lrow, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, cancel: cancelLp,
+        tap: e.target.closest('[data-act="timer"]'), t0: Date.now() };
       lp.pressTimer = setTimeout(function () { if (lp) lp.row.classList.add('pressing'); }, 150);
       lp.timer = setTimeout(function () {
         var L = lp; if (!L) return;
@@ -1813,7 +1814,16 @@ body.focus-open{overflow:hidden}
       if (s.min !== s.orig && !s.done) resize(s.id, s.min); else render();
       return;
     }
-    if (lp && (!e || e.pointerId === lp.pointerId)) { lp.cancel(); return; }
+    if (lp && (!e || e.pointerId === lp.pointerId)) {
+      /* A quick tap on a task opens its timer. Handled here, not on click:
+         an iPhone sends no click for a tap on plain text in a card. The
+         click that other phones send afterwards is swallowed, so it can't
+         land on a button of the timer screen that has just opened. */
+      var L = lp, tapped = !cancelled && L.tap && Date.now() - L.t0 < 600 ? L.tap.getAttribute('data-id') : null;
+      L.cancel();
+      if (tapped) { suppressClickUntil = Date.now() + 600; openTimer(tapped); }
+      return;
+    }
     if (!drag || (e && e.pointerId !== drag.pointerId)) return;
     var d = drag; drag = null;
     if (d.started) suppressClickUntil = Date.now() + 450;
