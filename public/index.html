@@ -217,6 +217,36 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 }
 @media (max-width:860px) and (hover:none) and (pointer:coarse){.row.pl > .x{display:none}}
 .row.sizing{box-shadow:0 0 0 2px #C9D3F0}
+/* v4.1: the focus timer */
+.row .body[data-act="timer"]{cursor:pointer}
+.tmr{color:var(--blue);font-weight:600}
+.tmr.over{color:var(--bad)}
+.focus{position:fixed;inset:0;z-index:85;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,3vh,28px);padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));text-align:center}
+.focus[hidden]{display:none}
+.fclose{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:#FFFFFF;color:var(--soft);font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.fclose:hover{color:var(--ink);border-color:#C9CED6}
+.fhead{max-width:min(720px,92vw)}
+.fproj{font-size:13px;color:var(--muted);margin-bottom:6px}
+.ftitle{font-size:clamp(20px,3.2vw,30px);font-weight:500;line-height:1.25;margin:0;color:var(--ink);overflow-wrap:anywhere}
+.fring{position:relative;width:min(78vw,52vh,480px);aspect-ratio:1}
+.fring svg{width:100%;height:100%;display:block;transform:rotate(-90deg)}
+.fring .track{fill:none;stroke:#E3E6EB;stroke-width:16}
+.fring .arc{fill:none;stroke:var(--blue);stroke-width:16;stroke-linecap:round;transition:stroke-dasharray .9s linear,stroke .3s}
+.focus.late .arc{stroke:var(--now)}
+.focus.paused .arc{stroke:#9AA3B2}
+.focus.over .track{stroke:#F3C9C4}
+.fmid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.fleft{font-size:clamp(40px,10vmin,88px);font-weight:500;letter-spacing:-.02em;color:var(--ink);line-height:1}
+.focus.over .fleft{color:var(--bad)}
+.fsub{font-size:14px;color:var(--soft);margin-top:8px}
+.fmeta{font-size:13px;color:var(--soft)}
+.fbtns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.fbtns .btn{min-height:44px;padding:10px 16px;font-size:14px}
+.fbtns .btn.primary{background:var(--ink);color:#FFFFFF;border-color:var(--ink)}
+.fother{font-size:13px;color:var(--soft)}
+.fother button{border:0;background:none;color:var(--blue);font:inherit;text-decoration:underline;cursor:pointer;padding:4px}
+body.focus-open{overflow:hidden}
+@media (max-width:480px){.fbtns{display:grid;grid-template-columns:1fr 1fr;width:min(320px,100%)}}
 </style>
 </head>
 <body>
@@ -236,7 +266,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     <form class="tmpadd" data-form="tmp"><input name="title" placeholder="Add a temp task (dog walk, wash floor)" aria-label="Temp task name" autocomplete="off"><select name="min" aria-label="How long">
       <option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option><option value="90">1 h 30</option></select><button class="btn" type="submit">Add</button></form>
     <div class="roll" id="roll"></div>
-    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the bar at the bottom of a task up or down to change how long (each task is as tall as it is long), or tap the time pill to choose. On a phone, swipe a task right to move it to the next day, or left to send it back (a temp task is removed); on a computer use → and ↶. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist.</p>
+    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the bar at the bottom of a task up or down to change how long (each task is as tall as it is long), or tap the time pill to choose. On a phone, swipe a task right to move it to the next day, or left to send it back (a temp task is removed); on a computer use → and ↶. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist. Tap a task to open its timer: a ring that empties as its time runs down. Close it and it keeps running.</p>
   </section>
   <section class="pane bkpane" aria-label="Next actions"><h2>Next actions <small id="bksum"></small></h2><div id="backlog"></div>
     <p class="hint">Drag a task into the day’s list (press and hold on a phone), or press +, to give it a time on the day you have chosen. Drop it on a day at the top to put it on that day instead. Drag one back here to take its time off. Tick a next action and Docket asks what comes after it.</p>
@@ -244,12 +274,22 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 </main>
 <div class="foot" id="ver"></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="focus" class="focus" role="dialog" aria-modal="true" aria-label="Task timer" hidden>
+  <button class="fclose" data-act="timer-close" aria-label="Close the timer (it keeps running)" title="Close (the timer keeps running)">×</button>
+  <div class="fhead"><div class="fproj" id="fproj"></div><h2 class="ftitle" id="ftitle"></h2></div>
+  <div class="fring" aria-hidden="true"><svg viewBox="0 0 200 200"><circle class="track" cx="100" cy="100" r="88"/><circle class="arc" id="farc" cx="100" cy="100" r="88"/></svg>
+    <div class="fmid"><div class="fleft num" id="fleft"></div><div class="fsub" id="fsub"></div></div></div>
+  <div class="fmeta num" id="fmeta"></div>
+  <div class="fbtns" id="fbtns"></div>
+  <div class="fother" id="fother"></div>
+  <div class="sr" id="flive" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div>
+</div>
 <div id="menu"></div>
 <div id="sheet"></div>
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v4.0 · 9 November 2026';
+  var VERSION = 'Docket v4.1 · 9 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   /* Height of a row in the day list: 2 px a minute, never shorter than a
      normal row, so an hour looks twice as long as half an hour. */
@@ -521,6 +561,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       var byId = {}; S.tasks.forEach(function (t) { byId[t.id] = t; });
       S.nexts = nx.filter(function (t) { return hasLabel(t, 'next') && !hasLabel(t, 'proposed'); }).map(function (t) { return byId[t.id] || t; });
       S.error = null; S.loaded = true; S.loadedAt = Date.now();
+      tidyTimer();
     }, function (e) { if (S.loadToken === token) S.error = e; })
       .then(function () { if (S.loadToken !== token) return; clearTimeout(S.stallTimer); S.loading = false; S.stalled = false; render(); });
   }
@@ -1244,6 +1285,109 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     return out;
   }
 
+  /* ---------- the focus timer ----------
+     Tap a task in the day's list: the screen fills with a ring that empties
+     as the task's time runs down, so how much is left reads at a glance.
+     One timer at a time, kept on this device, so closing the screen (or the
+     app) doesn't stop it; tap the task again to come back to it. */
+  var TKEY = 'docket.timer', fTick = null, wake = null, fBuzzed = false;
+  function readTimer() { try { var t = JSON.parse(localStorage.getItem(TKEY) || 'null'); return t && t.id ? t : null; } catch (x) { return null; } }
+  function writeTimer(t) { try { if (t) localStorage.setItem(TKEY, JSON.stringify(t)); else localStorage.removeItem(TKEY); } catch (x) { } }
+  function elapsed(t, now) { return (t.pausedAt || now) - t.startedAt - (t.pausedMs || 0); }
+  function leftMs(t) { return t.totalMs - elapsed(t, Date.now()); }
+  function timerLeft(id) { var t = readTimer(); return t && t.id === id ? leftMs(t) : null; }
+  function mmss(ms) {
+    var neg = ms < 0, s = Math.round(Math.abs(ms) / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = s % 60;
+    return (neg ? '+' : '') + (h ? h + ':' + (m < 10 ? '0' : '') + m : m) + ':' + (r < 10 ? '0' : '') + r;
+  }
+  function itemById(id) { return items().filter(function (x) { return x.id === id; })[0]; }
+  function startTimer(it) {
+    var t = { id: it.id, title: it.title, sub: it.kind === 'tmp' ? 'Temp' : (projName(it.pid) || ''), totalMs: it.min * 60000, startedAt: Date.now(), pausedAt: null, pausedMs: 0, day: S.date, start: it.start, min: it.min };
+    writeTimer(t); fBuzzed = false; return t;
+  }
+  /* Tap a task. Its own timer: come back to it. No timer running: start
+     one for the task's length. Another task's timer running: show this
+     task ready to start, so a stray tap never throws a running timer away. */
+  function openTimer(id) {
+    var it = itemById(id); if (!it || it.done || it.kind === 'ev') return;
+    var t = readTimer();
+    if (t && t.id !== id && leftMs(t) > 0) S.focus = { id: id, ready: true, other: t };
+    else { if (!t || t.id !== id) t = startTimer(it); S.focus = { id: id }; }
+    t = readTimer(); if (t && t.id === id && !t.open) { t.open = true; writeTimer(t); }
+    closeMenu();
+    var el = document.getElementById('focus'); el.hidden = false; document.body.classList.add('focus-open');
+    keepAwake(true);
+    drawFocus(true);
+    clearInterval(fTick); fTick = setInterval(function () { drawFocus(false); }, 1000);
+    try { el.querySelector('.fclose').focus(); } catch (x) { }
+  }
+  function closeTimer() {
+    if (!S.focus) return;
+    S.focus = null; clearInterval(fTick); fTick = null;
+    var t = readTimer(); if (t && t.open) { t.open = false; writeTimer(t); }
+    document.getElementById('focus').hidden = true; document.body.classList.remove('focus-open');
+    document.title = 'Docket'; keepAwake(false); render();
+  }
+  function keepAwake(on) {
+    if (!on) { if (wake) { try { wake.release(); } catch (x) { } wake = null; } return; }
+    if (wake || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    navigator.wakeLock.request('screen').then(function (w) { wake = w; w.addEventListener('release', function () { if (wake === w) wake = null; }); }, function () { });
+  }
+  function drawFocus(full) {
+    var f = S.focus; if (!f) return;
+    var el = document.getElementById('focus'), it = itemById(f.id), t = readTimer();
+    var own = t && t.id === f.id && !f.ready ? t : null;
+    var title = own ? own.title : it ? it.title : '', sub = own ? own.sub : it ? (it.kind === 'tmp' ? 'Temp' : projName(it.pid) || '') : '';
+    var total = own ? own.totalMs : (it ? it.min * 60000 : 0), left = own ? leftMs(own) : total;
+    var frac = total > 0 ? Math.max(0, Math.min(1, left / total)) : 0, C = 2 * Math.PI * 88;
+    var over = left < 0, late = !over && left <= Math.min(5 * 60000, total * 0.2), paused = own && own.pausedAt;
+    el.classList.toggle('over', over); el.classList.toggle('late', late && !paused); el.classList.toggle('paused', !!paused);
+    document.getElementById('farc').setAttribute('stroke-dasharray', (frac * C).toFixed(1) + ' ' + C.toFixed(1));
+    document.getElementById('fleft').textContent = mmss(left);
+    document.getElementById('fsub').textContent = f.ready ? durLabel(Math.round(total / 60000)) + ', ready to start' : over ? 'over the ' + durLabel(Math.round(total / 60000)) + ' planned' : paused ? 'paused, of ' + durLabel(Math.round(total / 60000)) : 'left of ' + durLabel(Math.round(total / 60000));
+    if (own && !paused && !over) document.title = mmss(left) + ' · ' + title;
+    else if (over) document.title = 'Time’s up · ' + title;
+    if (over && !fBuzzed) { fBuzzed = true; if (navigator.vibrate) { try { navigator.vibrate([250, 120, 250]); } catch (x) { } } document.getElementById('flive').textContent = 'Time’s up for ' + title + '.'; }
+    if (!full) return;
+    document.getElementById('fproj').textContent = sub;
+    document.getElementById('ftitle').textContent = title;
+    var meta = [];
+    if (it) meta.push('Planned ' + clock(it.start) + '–' + clock(it.start + it.min));
+    if (own && !paused && !over) meta.push('finishes ' + clock(nowMin() + Math.ceil(left / 60000)));
+    document.getElementById('fmeta').textContent = meta.join(' · ');
+    var b = '';
+    if (f.ready) b += '<button class="btn primary" data-act="timer-start">Start timer</button>';
+    else if (own) {
+      b += paused ? '<button class="btn primary" data-act="timer-resume">Resume</button>' : '<button class="btn" data-act="timer-pause">Pause</button>';
+      b += '<button class="btn" data-act="timer-more">+5 min</button>';
+      b += '<button class="btn" data-act="timer-stop">Stop timer</button>';
+      b += '<button class="btn" data-act="timer-done">Done ✓</button>';
+    }
+    document.getElementById('fbtns').innerHTML = b;
+    document.getElementById('fother').innerHTML = f.ready && f.other ? '“' + esc(f.other.title) + '” has ' + mmss(leftMs(f.other)) + ' left on its timer. Starting this one stops it. <button data-act="timer-back">Back to it</button>' : '';
+  }
+  function timerAct(act) {
+    var f = S.focus; if (!f) return;
+    var t = readTimer(), now = Date.now();
+    if (act === 'timer-close') { closeTimer(); return; }
+    if (act === 'timer-start') { var it = itemById(f.id); if (it) { var nt = startTimer(it); nt.open = true; writeTimer(nt); } S.focus = { id: f.id }; }
+    else if (act === 'timer-back') { if (t) { S.focus = { id: t.id }; t.open = true; writeTimer(t); } }
+    else if (!t || t.id !== f.id) return;
+    else if (act === 'timer-pause') { t.pausedAt = now; writeTimer(t); }
+    else if (act === 'timer-resume') { t.pausedMs = (t.pausedMs || 0) + (now - t.pausedAt); t.pausedAt = null; writeTimer(t); }
+    else if (act === 'timer-more') { t.totalMs += 5 * 60000; if (leftMs(t) > 0) fBuzzed = false; writeTimer(t); }
+    else if (act === 'timer-stop') { writeTimer(null); closeTimer(); toast('Timer stopped.'); return; }
+    else if (act === 'timer-done') { var id = f.id; writeTimer(null); closeTimer(); tick(id); return; }
+    drawFocus(true);
+  }
+  /* A timer for a task that has gone (ticked off here or elsewhere, or
+     removed) is cleared. */
+  function tidyTimer() {
+    var t = readTimer(); if (!t || t.day !== S.date || !S.loaded) return;
+    var it = itemById(t.id);
+    if (!it || it.done) { writeTimer(null); if (S.focus && S.focus.id === t.id) closeTimer(); }
+  }
+
   /* ---------- the day's own data (temp tasks, padlocks, ticked-off tasks) ----------
      Kept on the server per day. Saving sends this page's last copy from the
      server (base) with its copy now (next); the server keeps every change
@@ -1346,6 +1490,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     if (it.kind === 'tmp') meta.push('<span class="tag">Temp</span>');
     else if (projName(it.pid)) meta.push('<span>' + esc(projName(it.pid)) + '</span>');
     if (it.recurring) meta.push('<span>Repeats</span>');
+    var tl = !it.done && timerLeft(it.id);
+    if (tl != null) meta.push('<span class="tmr' + (tl < 0 ? ' over' : '') + '">' + (tl < 0 ? 'Timer over by ' + durLabel(Math.ceil(-tl / 60000)) : 'Timer: ' + durLabel(Math.max(1, Math.ceil(tl / 60000))) + ' left') + '</span>');
     var locked = !it.done && isLocked(it.id), span = clock(it.start) + '–' + clock(it.start + it.min);
     /* The end time sits in its own span so a phone can show the start only (the pill gives the length). */
     var spanHtml = clock(it.start) + '<span class="te">–' + clock(it.start + it.min) + '</span>';
@@ -1356,7 +1502,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       '<button class="grip" data-grip="list" data-id="' + esc(it.id) + '" aria-label="Drag to reorder ' + esc(it.title) + '">' + GRIP + '</button>' +
       '<span class="n num">' + (i + 1) + '</span>' +
       '<button class="tick ' + esc(it.prio || '') + (it.done ? ' on' : '') + '" data-act="tick" data-id="' + esc(it.id) + '" aria-label="' + (it.done ? 'Mark not done: ' : 'Mark done: ') + esc(it.title) + '">' + (it.done ? CHECK : '') + '</button>' +
-      '<div class="body"><span class="title">' + esc(it.title) + '</span>' + (meta.length ? '<span class="meta">' + meta.join(' · ') + '</span>' : '') + '</div>' +
+      (it.done ? '<div class="body">' : '<div class="body" data-act="timer" data-id="' + esc(it.id) + '" role="button" tabindex="0" aria-label="Open the timer for ' + esc(it.title) + '">') +
+      '<span class="title">' + esc(it.title) + '</span>' + (meta.length ? '<span class="meta">' + meta.join(' · ') + '</span>' : '') + '</div>' +
       '<div class="right">' + when +
       '<span class="pill num" data-pill="' + esc(it.id) + '" role="button" tabindex="0" aria-label="Duration ' + durLabel(it.min) + '. Drag sideways or tap to change.">' + durLabel(it.min) + '</span></div>' +
       (it.kind === 'tmp' ? '<button class="x" data-act="deltmp" data-id="' + esc(it.id) + '" aria-label="Remove ' + esc(it.title) + '">×</button>' :
@@ -1758,6 +1905,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       case 'reload': location.reload(); break;
       case 'status': toast(S.todoist.state === 'ok' ? 'Todoist connected' + (S.store.state === 'ok' ? '. Temp tasks are saving.' : '. ' + S.store.msg) + ' ' + calStatus() + ' ' + VERSION : (S.todoist.msg || 'Checking Todoist…')); break;
       case 'tick': tick(id); break;
+      case 'timer': openTimer(id); break;
+      case 'timer-close': case 'timer-start': case 'timer-back': case 'timer-pause': case 'timer-resume': case 'timer-more': case 'timer-stop': case 'timer-done': timerAct(act); break;
       case 'add': addFromBacklog(id, null); if (window.innerWidth <= 860) toast('Added to ' + dayInline(S.date) + '.'); break;
       case 'replan': whenFresh(replanFromNow); break;
       case 'undo-replan': undoReplan(); break;
@@ -1773,7 +1922,9 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   document.addEventListener('keydown', function (e) {
     var p = e.target.closest && e.target.closest('[data-pill]');
     if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openMenu(p.getAttribute('data-pill'), p); }
-    if (e.key === 'Escape') { closeMenu(); if (S.sheet) closeSheet(); }
+    var tb = e.target.closest && e.target.closest('[data-act="timer"]');
+    if (tb && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openTimer(tb.getAttribute('data-id')); return; }
+    if (e.key === 'Escape') { if (S.focus) { closeTimer(); return; } closeMenu(); if (S.sheet) closeSheet(); }
   });
   document.addEventListener('submit', function (e) {
     var sf = e.target.closest('[data-form="sheetadd"]');
@@ -1799,6 +1950,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
      other device left. */
   function comeBack() {
     if (document.visibilityState !== 'visible') return;
+    if (S.focus) { keepAwake(true); drawFocus(true); }
     checkVersion();
     if (!drag && !scrub && (rollDay() || Date.now() - S.loadedAt > 15000)) load();
   }
@@ -1828,6 +1980,8 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   loadLocal(); loadProjects(); load();
   /* Never redraw under someone editing a proposal or using the chooser. */
   function busy() { var a = document.activeElement; return !!(S.sheet || (a && a.closest && a.closest('.prop,.menu'))); }
+  /* A timer left open when the page was last closed comes back with it. */
+  (function () { var t = readTimer(); if (t && t.open && t.day === S.date && leftMs(t) > -3600000) { var go = function () { if (itemById(t.id)) openTimer(t.id); }; setTimeout(go, 1200); } })();
   /* While open: refresh every 30 seconds (not while dragging, resizing or
      choosing something), and redraw so the time line keeps up. */
   setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.today || Date.now() - S.loadedAt > 28000) { load(); checkVersion(); } else render(); } }, 30000);
