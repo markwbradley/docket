@@ -249,7 +249,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v3.9 · 8 November 2026';
+  var VERSION = 'Docket v4.0 · 9 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   /* Height of a row in the day list: 2 px a minute, never shorter than a
      normal row, so an hour looks twice as long as half an hour. */
@@ -278,7 +278,9 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     overdueOpen: false,
     pend: {}, pendDone: {},
     /* v3.1 */
-    nexts: [], proposed: [], tab: 'today', sheet: null, dismissing: {}
+    nexts: [], proposed: [], tab: 'today', sheet: null, dismissing: {},
+    /* v4.0: the day data as last seen from the server, and Todoist writes on their way */
+    localBase: null, inflight: {}
   };
   var PEND_MS = 180000;
   /* Changes sent to Todoist but not yet seen in a read: keep showing them,
@@ -509,6 +511,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     clearTimeout(S.stallTimer);
     S.stallTimer = setTimeout(function () { if (S.loadToken === token && S.loading) { S.stalled = true; render(); } }, 8000);
     if (!Object.keys(S.projects).length) loadProjects();
+    loadLocal(true);
     return Promise.all([api('/api/today'), api('/api/next')]).then(function (r) {
       if (S.loadToken !== token) return;
       S.tasks = applyPending(r[0].tasks || []);
@@ -678,21 +681,47 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       var w = { id: id, date: t.dueDate };
       if (c.durChanged || !c.hasDur || c.fromBacklog) { t.duration = todoistDur(c.min); w.duration = t.duration; }
       S.pend[id] = { dueDate: t.dueDate, duration: w.duration || null, at: Date.now() };
-      writes.push({ w: w, t: t, before: before });
+      writes.push({ w: w, t: t, before: before, guard: guardOf(id, before.dueDate, before.duration) });
     });
     saveLocal(); render();
     if (!writes.length) return Promise.resolve();
-    var body = { changes: writes.map(function (x) { return { id: x.w.id, date: x.w.date, durationMin: x.w.duration ? parseDuration(x.w.duration) : null, recurring: !!x.t.recurring, string: x.t.dueString || '' }; }) };
+    var body = { changes: writes.map(function (x) { return Object.assign({ id: x.w.id, date: x.w.date, durationMin: x.w.duration ? parseDuration(x.w.duration) : null, recurring: !!x.t.recurring, string: x.t.dueString || '' }, x.guard); }) };
     function revert(x) { delete S.pend[x.w.id]; x.t.dueDate = x.before.dueDate; x.t.duration = x.before.duration; }
+    var ids = writes.map(function (x) { return x.w.id; }); inflight(ids, 1);
     return api('/api/update', { method: 'POST', body: body, timeout: 25000 }).then(function (r) {
+      inflight(ids, -1);
       var bad = {}; ((r && r.failures) || []).forEach(function (f) { bad[f.id] = f.error || true; });
-      var n = 0; writes.forEach(function (x) { if (bad[x.w.id]) { n++; revert(x); } });
+      var clash = {}; ((r && r.conflicts) || []).forEach(function (f) { clash[f.id] = true; });
+      var n = 0, nc = 0; writes.forEach(function (x) { if (clash[x.w.id]) { nc++; revert(x); } else if (bad[x.w.id]) { n++; revert(x); } });
       render();
-      if (n) toast(n + (n === 1 ? ' task wasn’t' : ' tasks weren’t') + ' changed in Todoist.');
+      if (nc) clashed(nc);
+      else if (n) toast(n + (n === 1 ? ' task wasn’t' : ' tasks weren’t') + ' changed in Todoist.');
     }, function (e) {
+      inflight(ids, -1);
       if (e && e.code === 'timeout') { toast('Todoist is slow to confirm. Checking again shortly.'); setTimeout(load, 10000); return; }
       writes.forEach(revert); render(); toast('Not changed in Todoist. ' + advice(e));
     });
+  }
+  /* The stale-screen guard: with each time sent to Todoist goes what this
+     page believed the task held. The Worker refuses the change if Todoist
+     now holds something else (moved on another device). A task with a
+     write from here still on its way is not checked: that write is the
+     reason it differs. */
+  function guardOf(id, dueDate, duration) {
+    if (S.inflight[id]) return {};
+    return { was: dueDate || null, wasDur: parseDuration(duration) || null };
+  }
+  function inflight(ids, d) { ids.forEach(function (id) { S.inflight[id] = Math.max(0, (S.inflight[id] || 0) + d); if (!S.inflight[id]) delete S.inflight[id]; }); }
+  function clashed(n) {
+    toast((n === 1 ? '1 task was' : n + ' tasks were') + ' changed on another device, so Docket left ' + (n === 1 ? 'it' : 'them') + ' alone and refreshed. Check and try again.', null, 8000);
+    load(true);
+  }
+  /* Before a change that moves many tasks at once, make sure the plan on
+     screen is current: refresh first if it is more than 15 seconds old. */
+  function whenFresh(fn) {
+    if (S.loaded && Date.now() - S.loadedAt < 15000) { fn(); return; }
+    toast('Checking for changes first…');
+    load(true).then(fn);
   }
   /* Replan from now: every unfinished task, in its current order, back to
      back from the next five-minute mark (from the start of the day on a
@@ -742,18 +771,24 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   }
   function changeTemps(day, fn) {
     return api('/api/local?date=' + day).then(function (d) {
-      return api('/api/local?date=' + day, { method: 'PUT', body: { temps: fn(d.temps || []), done: d.done || [], orig: d.orig || {}, locked: d.locked || {} } });
+      var base = shapeDay(d), next = shapeDay(d); next.temps = fn(next.temps.slice());
+      return api('/api/local?date=' + day, { method: 'POST', body: { base: base, next: next } });
     }).then(function () { if (S.date === day) loadLocal(); }, function (e) { toast('Temp tasks couldn’t be moved. ' + advice(e)); });
   }
   function sendMoves(writes, undo, failMsg) {
     if (!writes.length) return Promise.resolve(true);
     function back(u) { delete S.pend[u.t.id]; u.t.dueDate = u.dueDate; u.t.duration = u.duration; }
+    var ids = writes.map(function (w) { return w.id; }); inflight(ids, 1);
     return api('/api/update', { method: 'POST', body: { changes: writes }, timeout: 25000 }).then(function (r) {
+      inflight(ids, -1);
       var bad = {}; ((r && r.failures) || []).forEach(function (f) { bad[f.id] = true; });
-      var nb = 0; undo.forEach(function (u) { if (bad[u.t.id]) { nb++; back(u); } });
-      if (nb) { render(); toast(nb + (nb === 1 ? ' task wasn’t' : ' tasks weren’t') + ' changed in Todoist.'); }
-      return !nb;
+      var clash = {}; ((r && r.conflicts) || []).forEach(function (f) { clash[f.id] = true; });
+      var nb = 0, nc = 0; undo.forEach(function (u) { if (clash[u.t.id]) { nc++; back(u); } else if (bad[u.t.id]) { nb++; back(u); } });
+      if (nc) { render(); clashed(nc); }
+      else if (nb) { render(); toast(nb + (nb === 1 ? ' task wasn’t' : ' tasks weren’t') + ' changed in Todoist.'); }
+      return !nb && !nc;
     }, function (e) {
+      inflight(ids, -1);
       if (e && e.code === 'timeout') { toast('Todoist is slow to confirm. Checking again shortly.'); setTimeout(load, 10000); return false; }
       undo.forEach(back); render(); toast(failMsg + ' ' + advice(e)); return false;
     });
@@ -779,10 +814,11 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       if (it.kind === 'tmp') { temps.push({ id: it.id, title: it.title, min: it.min, start: st, done: false }); return; }
       var t = it.t;
       undo.tasks.push({ t: t, dueDate: t.dueDate, duration: t.duration });
+      var g = guardOf(t.id, t.dueDate, t.duration);
       t.dueDate = to + 'T' + clock(st) + ':00';
       if (!it.hasDur) t.duration = todoistDur(it.min);
       S.pend[t.id] = { dueDate: t.dueDate, duration: it.hasDur ? null : t.duration, at: Date.now() };
-      writes.push({ id: t.id, date: t.dueDate, durationMin: it.hasDur ? null : it.min, recurring: false, string: '' });
+      writes.push(Object.assign({ id: t.id, date: t.dueDate, durationMin: it.hasDur ? null : it.min, recurring: false, string: '' }, g));
     });
     if (temps.length) {
       var ids = {}; temps.forEach(function (x) { ids[x.id] = true; });
@@ -924,7 +960,7 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     if (day === S.date) return;
     flushSave();
     S.date = day;
-    S.local = { temps: [], done: [], orig: {}, locked: {} };
+    S.local = { temps: [], done: [], orig: {}, locked: {} }; S.localBase = null;
     lastReplan = null;
     closeMenu();
     render();
@@ -1208,26 +1244,86 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     return out;
   }
 
-  /* ---------- local storage (temp tasks and today's ticked-off tasks) ---------- */
-  function loadLocal() {
+  /* ---------- the day's own data (temp tasks, padlocks, ticked-off tasks) ----------
+     Kept on the server per day. Saving sends this page's last copy from the
+     server (base) with its copy now (next); the server keeps every change
+     this device made and everything another device changed in the meantime.
+     Re-read with every refresh, so the other device's changes show up. */
+  function shapeDay(d) {
+    d = d && typeof d === 'object' ? d : {};
+    return { temps: Array.isArray(d.temps) ? d.temps : [], done: Array.isArray(d.done) ? d.done : [], orig: d.orig && typeof d.orig === 'object' ? d.orig : {}, locked: d.locked && typeof d.locked === 'object' ? d.locked : {} };
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  /* The same merge as the Worker's (src/worker.js). */
+  function canon(v) {
+    if (v === undefined) return '~';
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + canon(v[k]); }).join(',') + '}';
+  }
+  function mergeKeyed(base, mine, theirs, keyOf) {
+    var B = {}, M = {}, T = {}, order = [], seen = {};
+    function add(map, list) { list.forEach(function (x) { var k = keyOf(x); map[k] = x; if (!seen[k]) { seen[k] = true; order.push(k); } }); }
+    add(T, theirs); add(M, mine); add(B, base);
+    var out = [];
+    order.forEach(function (k) { var v = canon(M[k]) === canon(B[k]) ? T[k] : M[k]; if (v !== undefined) out.push([k, v]); });
+    return out;
+  }
+  function mergeDay(base, mine, theirs) {
+    function list(b, m, t) { return mergeKeyed(b, m, t, function (x) { return String(x && x.id); }).map(function (e) { return e[1]; }); }
+    function map(b, m, t) {
+      function ent(o) { return Object.keys(o).map(function (k) { return { k: k, v: o[k] }; }); }
+      var out = {}; mergeKeyed(ent(b), ent(m), ent(t), function (x) { return x.k; }).forEach(function (e) { out[e[0]] = e[1].v; }); return out;
+    }
+    return { temps: list(base.temps, mine.temps, theirs.temps), done: list(base.done, mine.done, theirs.done), orig: map(base.orig, mine.orig, theirs.orig), locked: map(base.locked, mine.locked, theirs.locked) };
+  }
+  /* Put the day's data in place without replacing the object the page holds. */
+  /* Always a copy: the page edits S.local in place, and the copy last seen
+     from the server (S.localBase) must not change with it. */
+  function setLocal(d) { var x = clone(shapeDay(d)); S.local.temps = x.temps; S.local.done = x.done; S.local.orig = x.orig; S.local.locked = x.locked; }
+  var saving = false, saveAgain = false;
+  function loadLocal(quiet) {
     var date = S.date;
     return api('/api/local?date=' + date).then(function (d) {
       if (date !== S.date) return;
-      S.local = { temps: d.temps || [], done: d.done || [], orig: d.orig || {}, locked: d.locked || {} };
+      /* A save is waiting or on its way: its answer brings this in. */
+      if (saving || savePending) return;
+      var server = shapeDay(d), mine = shapeDay(S.local), before = canon(mine);
+      setLocal(S.localBase && canon(mine) !== canon(S.localBase) ? mergeDay(S.localBase, mine, server) : server);
+      S.localBase = clone(server);
       S.store = { state: 'ok', msg: '' };
-    }, function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be loaded. ' + advice(e) }; }).then(render);
+      if (!quiet || canon(shapeDay(S.local)) !== before) render();
+    }, function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be loaded. ' + advice(e) }; if (!quiet) render(); });
   }
-  /* Each save carries its own day and that day's data, so switching days
-     can never write one day's temp tasks under another. */
+  /* Each save carries its own day, so switching days can never write one
+     day's data under another. One save at a time; edits made while one is
+     on its way go in the next. */
   var savePending = null;
   function saveLocal() {
     clearTimeout(saveTimer);
-    var date = S.date, local = S.local;
+    var date = S.date;
     savePending = function () {
       saveTimer = null; savePending = null;
-      api('/api/local?date=' + date, { method: 'PUT', body: { temps: local.temps, done: local.done, orig: local.orig || {}, locked: local.locked || {} } })
-        .then(function () { S.store = { state: 'ok', msg: '' }; renderStatus(); },
-          function (e) { S.store = { state: 'error', msg: 'Temp tasks couldn’t be saved. ' + advice(e) }; renderStatus(); toast('Couldn’t save temp tasks.'); });
+      if (date !== S.date) return;
+      if (saving) { saveAgain = true; return; }
+      saving = true;
+      var base = clone(S.localBase || shapeDay({})), sent = clone(shapeDay(S.local));
+      api('/api/local?date=' + date, { method: 'POST', body: { base: base, next: sent } }).then(function (d) {
+        saving = false;
+        if (date === S.date) {
+          var server = shapeDay(d), now = shapeDay(S.local);
+          /* Anything changed here while the save was on its way stays. */
+          setLocal(canon(now) === canon(sent) ? server : mergeDay(sent, now, server));
+          S.localBase = clone(server);
+          S.store = { state: 'ok', msg: '' };
+          render();
+        }
+        if (saveAgain) { saveAgain = false; saveLocal(); flushSave(); }
+      }, function (e) {
+        saving = false;
+        S.store = { state: 'error', msg: 'Temp tasks couldn’t be saved. ' + advice(e) }; renderStatus(); toast('Couldn’t save temp tasks.');
+        if (saveAgain) { saveAgain = false; saveLocal(); }
+      });
     };
     saveTimer = setTimeout(savePending, 400);
   }
@@ -1663,9 +1759,9 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
       case 'status': toast(S.todoist.state === 'ok' ? 'Todoist connected' + (S.store.state === 'ok' ? '. Temp tasks are saving.' : '. ' + S.store.msg) + ' ' + calStatus() + ' ' + VERSION : (S.todoist.msg || 'Checking Todoist…')); break;
       case 'tick': tick(id); break;
       case 'add': addFromBacklog(id, null); if (window.innerWidth <= 860) toast('Added to ' + dayInline(S.date) + '.'); break;
-      case 'replan': replanFromNow(); break;
+      case 'replan': whenFresh(replanFromNow); break;
       case 'undo-replan': undoReplan(); break;
-      case 'rollover': rollOver(); break;
+      case 'rollover': whenFresh(rollOver); break;
       case 'undo-roll': undoRoll(); break;
       case 'overdue': S.overdueOpen = !S.overdueOpen; render(); break;
       case 'setdur': closeMenu(); resize(id, +el.getAttribute('data-min')); break;
@@ -1698,11 +1794,17 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
     place({ kind: 'tmp', id: x.id, x: x, title: title, min: x.min, start: 0 }, endIndex(x.id));
     f.title.value = '';
   });
-  document.addEventListener('visibilitychange', function () {
+  /* Coming back to Docket (switching tab, app or window): refresh if the
+     plan on screen is more than 15 seconds old, so what you see is what the
+     other device left. */
+  function comeBack() {
     if (document.visibilityState !== 'visible') return;
     checkVersion();
-    if (rollDay() || Date.now() - S.loadedAt > 30000) load();
-  });
+    if (!drag && !scrub && (rollDay() || Date.now() - S.loadedAt > 15000)) load();
+  }
+  document.addEventListener('visibilitychange', comeBack);
+  window.addEventListener('focus', comeBack);
+  window.addEventListener('pageshow', function (e) { if (e.persisted) comeBack(); });
   /* A home-screen app can sit in the background for days still running the
      page it first loaded, so new features never arrive. On coming back,
      compare with the page on the server and reload if it has changed. */
@@ -1726,7 +1828,9 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
   loadLocal(); loadProjects(); load();
   /* Never redraw under someone editing a proposal or using the chooser. */
   function busy() { var a = document.activeElement; return !!(S.sheet || (a && a.closest && a.closest('.prop,.menu'))); }
-  setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.today) { load(); } else if (Date.now() - S.loadedAt > 120000) { load(); checkVersion(); } else render(); } }, 60000);
+  /* While open: refresh every 30 seconds (not while dragging, resizing or
+     choosing something), and redraw so the time line keeps up. */
+  setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.today || Date.now() - S.loadedAt > 28000) { load(); checkVersion(); } else render(); } }, 30000);
 })();
 </script>
 </body>

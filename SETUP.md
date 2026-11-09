@@ -40,7 +40,7 @@ Until both secrets are there, Docket works as before without appointments. Appoi
 
 ## How it is built
 - `public/index.html`: the page.
-- `src/worker.js`: checks the Access sign-in on every request, calls Todoist's API with your token, and stores temp tasks in Workers KV (created automatically on first deploy, kept 14 days).
+- `src/worker.js`: checks the Access sign-in on every request and calls Todoist's API with your token. Each day's own data (temp tasks, padlocks, ticked-off list) is kept in a Durable Object called `DayStore`, created on deploy and kept for a fortnight. Days saved before v4.0 are brought across from Workers KV the first time they are opened.
 - `tools/calendar-feed.gs`: the Apps Script that hands Docket the week's appointments. It lives in your Google account; the copy here is for reference and set-up.
 - `wrangler.toml`: Worker settings. Secrets are never in the repository.
 
@@ -67,3 +67,11 @@ Until both secrets are there, Docket works as before without appointments. Appoi
 - **Planning a later day** works like today: drag next actions in, reorder, resize, and take times off. Instead of Replan from now, a later day offers Line up from 08:30. Temp tasks belong to their own day.
 - **Appointments.** Once the calendar feed is set up (step 6), each day shows its appointments as fixed teal blocks, with all-day events in a line above the list. Placing a task, changing its length, Replan and Line up all step round appointments, so a task never lands in a meeting. Declined invitations are left out.
 - Repeating tasks appear on their next date only, as in Todoist's own filters.
+
+## What v4.0 added
+
+Desktop and phone no longer overwrite each other.
+
+- **Saves merge.** A save sends what this device changed, and the server combines it with whatever the other device changed in the meantime, one save at a time. A temp task added on the desktop survives a padlock changed on a phone that hadn't caught up. If both devices change the same task, the later save has it.
+- **Old plans can't overwrite new times.** Each time Docket writes a task's time to Todoist, it says what it believed the task held. If Todoist holds something else because the task was moved, resized, completed or deleted elsewhere, that task is left alone, Docket says so and refreshes.
+- **Refresh is automatic.** Every 30 seconds while Docket is open, and whenever you switch back to it after 15 seconds away. Replan and Move to tomorrow refresh first if the plan on screen is more than 15 seconds old. The refresh button still works, but you shouldn't need it.

@@ -1,6 +1,7 @@
 /* Docket: a day planner over the next seven days, built on Todoist.
    This Worker serves the page and a small API. It talks to Todoist with
-   Mark's API token (secret TODOIST_TOKEN), keeps temp tasks in KV, and
+   Mark's API token (secret TODOIST_TOKEN), keeps each day's own data
+   (temp tasks, padlocks, ticked-off list) in a Durable Object, and
    reads Google Calendar appointments from a small Apps Script feed in
    Mark's Google account (secrets GCAL_URL and GCAL_KEY; see SETUP.md).
    Every request must carry a valid Cloudflare Access sign-in; without the
@@ -89,7 +90,31 @@ async function route(url, request, env) {
   }
   if (p === '/api/update' && m === 'POST') {
     const body = await request.json();
-    const cmds = (body.changes || []).map(c => {
+    /* Stale-screen guard. A change can say what the page believed the task
+       held (was: its due date and time; wasDur: its length in minutes). If
+       Todoist now holds something else, another device has moved it since
+       this page loaded, so that task is left alone and reported back as a
+       conflict instead of being overwritten with an old plan. */
+    const changes = (body.changes || []).slice(0, 60);
+    const checked = changes.filter(c => c.was !== undefined && /^[\w-]+$/.test(String(c.id)));
+    const now = {};
+    await Promise.all(checked.map(c => td(env, '/tasks/' + encodeURIComponent(String(c.id))).then(
+      t => { now[c.id] = (t.checked || t.completed_at || t.is_deleted) ? 'gone' : norm(t); },
+      e => { now[c.id] = /answered 404/.test(String(e && e.message)) ? 'gone' : 'unknown'; })));
+    const conflicts = [];
+    const ok = changes.filter(c => {
+      if (c.was === undefined) return true;
+      const cur = now[c.id];
+      if (cur === 'unknown' || cur === undefined) return true;
+      if (cur === 'gone') { conflicts.push({ id: String(c.id), reason: 'gone' }); return false; }
+      if ((cur.dueDate || null) !== (c.was || null)) { conflicts.push({ id: String(c.id), reason: 'moved', now: cur.dueDate }); return false; }
+      if (c.durationMin && c.wasDur !== undefined) {
+        const curMin = cur.duration ? parseInt(cur.duration, 10) : null;
+        if ((curMin || null) !== (c.wasDur || null)) { conflicts.push({ id: String(c.id), reason: 'resized' }); return false; }
+      }
+      return true;
+    });
+    const cmds = ok.map(c => {
       const args = { id: String(c.id) };
       if (c.date) {
         args.due = { date: c.date, lang: 'en' };
@@ -100,7 +125,9 @@ async function route(url, request, env) {
       if (c.durationMin) args.duration = { amount: Math.round(c.durationMin), unit: 'minute' };
       return { type: 'item_update', uuid: crypto.randomUUID(), args, _id: args.id };
     });
-    return json(await sync(env, cmds));
+    const r = await sync(env, cmds);
+    r.conflicts = conflicts;
+    return json(r);
   }
   if (p === '/api/unschedule' && m === 'POST') {
     const body = await request.json();
@@ -123,22 +150,85 @@ async function route(url, request, env) {
     r.tasks = before.filter(Boolean);
     return json(r);
   }
+  /* A day's own data: temp tasks, ticked-off tasks, where Docket-scheduled
+     tasks were before (orig, for "Not today") and padlocks (locked). Kept in
+     one Durable Object, which handles one request at a time, so a save from
+     the phone and one from the desktop can't cross. */
   if (p === '/api/local') {
     const date = url.searchParams.get('date') || '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: 'bad_date' }, 400);
-    const key = 'local:' + date;
-    if (m === 'GET') return json((await env.DOCKET.get(key, 'json')) || { temps: [], done: [] });
-    if (m === 'PUT') {
-      const body = await request.json();
-      /* orig: where each task Docket scheduled today was before, so "Not today" can put it back. */
-      const orig = body.orig && typeof body.orig === 'object' ? body.orig : {};
-      /* locked: tasks held at their time while the rest of the day flows round them. */
-      const locked = body.locked && typeof body.locked === 'object' ? body.locked : {};
-      await env.DOCKET.put(key, JSON.stringify({ temps: body.temps || [], done: body.done || [], orig, locked, updatedAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 14 });
-      return json({ ok: true });
-    }
+    if (m !== 'GET' && m !== 'POST' && m !== 'PUT') return json({ error: 'bad_method' }, 405);
+    const stub = env.DAYS.get(env.DAYS.idFromName('docket'));
+    return stub.fetch('https://days/' + date, { method: m, headers: { 'Content-Type': 'application/json' }, body: m === 'GET' ? undefined : await request.text() });
   }
   return json({ error: 'not_found' }, 404);
+}
+
+/* ---------- a day's own data ---------- */
+/* Saving merges rather than overwrites. The page sends the copy it last
+   had from here (base) and its copy now (next). For each temp task,
+   ticked-off task, padlock and saved time: if this device changed it, its
+   version wins; if not, whatever is stored now stays, including anything
+   another device added, changed or removed in the meantime. */
+export class DayStore {
+  constructor(state, env) { this.state = state; this.env = env; }
+  async fetch(request) {
+    const date = new URL(request.url).pathname.slice(1);
+    const key = 'day:' + date;
+    let cur = await this.state.storage.get(key);
+    if (!cur) {
+      /* First visit to a day since the move from KV: bring its data across. */
+      const old = this.env.DOCKET ? await this.env.DOCKET.get('local:' + date, 'json') : null;
+      cur = shapeDay(old);
+    }
+    if (request.method === 'GET') return json(cur);
+    const body = await request.json().catch(() => ({}));
+    let next;
+    if (request.method === 'PUT') next = shapeDay(body);       /* an older page, still open somewhere: whole copy */
+    else next = body.base ? mergeDay(shapeDay(body.base), shapeDay(body.next), cur) : shapeDay(body.next);
+    next.rev = (cur.rev || 0) + 1;
+    next.updatedAt = new Date().toISOString();
+    await this.state.storage.put(key, next);
+    await this.prune();
+    return json(next);
+  }
+  /* Keep a fortnight back; nothing older is ever shown. */
+  async prune() {
+    const cutoff = londonDate(-15);
+    const keys = await this.state.storage.list({ prefix: 'day:', end: 'day:' + cutoff });
+    if (keys.size) await this.state.storage.delete([...keys.keys()]);
+  }
+}
+function shapeDay(d) {
+  d = d && typeof d === 'object' ? d : {};
+  return {
+    temps: Array.isArray(d.temps) ? d.temps : [], done: Array.isArray(d.done) ? d.done : [],
+    orig: d.orig && typeof d.orig === 'object' ? d.orig : {}, locked: d.locked && typeof d.locked === 'object' ? d.locked : {},
+    rev: d.rev || 0
+  };
+}
+/* The same merge runs in the page (index.html), for edits made while a save is on its way. */
+function canon(v) {
+  if (v === undefined) return '~';
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+  return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+}
+function mergeKeyed(base, mine, theirs, keyOf) {
+  const B = new Map(), M = new Map(), T = new Map(), order = [];
+  const add = (map, list) => list.forEach((x, i) => { const k = keyOf(x, i); map.set(k, x); if (!order.includes(k)) order.push(k); });
+  add(T, theirs); add(M, mine); add(B, base);
+  const out = [];
+  order.forEach(k => { const v = canon(M.get(k)) === canon(B.get(k)) ? T.get(k) : M.get(k); if (v !== undefined) out.push([k, v]); });
+  return out;
+}
+function mergeDay(base, mine, theirs) {
+  const list = (b, m, t) => mergeKeyed(b, m, t, x => String(x && x.id)).map(e => e[1]);
+  const map = (b, m, t) => {
+    const ent = o => Object.keys(o).map(k => ({ k, v: o[k] }));
+    const out = {}; mergeKeyed(ent(b), ent(m), ent(t), x => x.k).forEach(e => { out[e[0]] = e[1].v; }); return out;
+  };
+  return { temps: list(base.temps, mine.temps, theirs.temps), done: list(base.done, mine.done, theirs.done), orig: map(base.orig, mine.orig, theirs.orig), locked: map(base.locked, mine.locked, theirs.locked) };
 }
 
 /* ---------- Todoist ---------- */

@@ -19,7 +19,18 @@ directory = "./public"
 binding = "ASSETS"
 run_worker_first = true
 
-# Temp-task storage. No id: Cloudflare creates the namespace in this
-# account on the first deploy and reuses it afterwards.
+# Where each day's own data lived until v4.0. Kept so the Durable Object
+# can bring a day across the first time it is opened.
 [[kv_namespaces]]
 binding = "DOCKET"
+
+# Each day's own data (temp tasks, padlocks, ticked-off list), from v4.0.
+# One object handles one request at a time, so saves from two devices
+# merge instead of overwriting each other.
+[[durable_objects.bindings]]
+name = "DAYS"
+class_name = "DayStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DayStore"]
