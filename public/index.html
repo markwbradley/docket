@@ -219,8 +219,6 @@ body.sheet-open #toast{bottom:auto;top:calc(12px + env(safe-area-inset-top))}
 .row.sizing{box-shadow:0 0 0 2px #C9D3F0}
 /* v4.1: the focus timer */
 .row .body[data-act="timer"]{cursor:pointer}
-.tmr{color:var(--blue);font-weight:600}
-.tmr.over{color:var(--bad)}
 .focus{position:fixed;inset:0;z-index:85;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,3vh,28px);padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));text-align:center}
 .focus[hidden]{display:none}
 .fclose{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:#FFFFFF;color:var(--soft);font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
@@ -266,7 +264,7 @@ body.focus-open{overflow:hidden}
     <form class="tmpadd" data-form="tmp"><input name="title" placeholder="Add a temp task (dog walk, wash floor)" aria-label="Temp task name" autocomplete="off"><select name="min" aria-label="How long">
       <option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 h</option><option value="90">1 h 30</option></select><button class="btn" type="submit">Add</button></form>
     <div class="roll" id="roll"></div>
-    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the bar at the bottom of a task up or down to change how long (each task is as tall as it is long), or tap the time pill to choose. On a phone, swipe a task right to move it to the next day, or left to send it back (a temp task is removed); on a computer use → and ↶. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist. Tap a task to open its timer: a ring that empties as its time runs down. Close it and it keeps running.</p>
+    <p class="hint">Drag ⠿ to reorder, or on a phone press and hold a task, then drag. Drop a task on a day at the top to move it to the end of that day. Drag the bar at the bottom of a task up or down to change how long (each task is as tall as it is long), or tap the time pill to choose. On a phone, swipe a task right to move it to the next day, or left to send it back (a temp task is removed); on a computer use → and ↶. Tap the padlock to hold a task at its time while the rest flow round it, or tap a task’s time to put it at an exact time. Appointments come from Google Calendar and tasks are planned around them. Temp tasks stay on their day and never go to Todoist. Tap a task to open its timer: a ring that counts down to the task’s planned finish.</p>
   </section>
   <section class="pane bkpane" aria-label="Next actions"><h2>Next actions <small id="bksum"></small></h2><div id="backlog"></div>
     <p class="hint">Drag a task into the day’s list (press and hold on a phone), or press +, to give it a time on the day you have chosen. Drop it on a day at the top to put it on that day instead. Drag one back here to take its time off. Tick a next action and Docket asks what comes after it.</p>
@@ -275,7 +273,7 @@ body.focus-open{overflow:hidden}
 <div class="foot" id="ver"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="focus" class="focus" role="dialog" aria-modal="true" aria-label="Task timer" hidden>
-  <button class="fclose" data-act="timer-close" aria-label="Close the timer (it keeps running)" title="Close (the timer keeps running)">×</button>
+  <button class="fclose" data-act="timer-close" aria-label="Close the timer" title="Close">×</button>
   <div class="fhead"><div class="fproj" id="fproj"></div><h2 class="ftitle" id="ftitle"></h2></div>
   <div class="fring" aria-hidden="true"><svg viewBox="0 0 200 200"><circle class="track" cx="100" cy="100" r="88"/><circle class="arc" id="farc" cx="100" cy="100" r="88"/></svg>
     <div class="fmid"><div class="fleft num" id="fleft"></div><div class="fsub" id="fsub"></div></div></div>
@@ -289,7 +287,7 @@ body.focus-open{overflow:hidden}
 <script>
 (function () {
   'use strict';
-  var VERSION = 'Docket v4.1 · 9 November 2026';
+  var VERSION = 'Docket v4.2 · 9 November 2026';
   var LDN = 'Europe/London', DAY_START = 8 * 60 + 30, DEF_MIN = 30;
   /* Height of a row in the day list: 2 px a minute, never shorter than a
      normal row, so an hour looks twice as long as half an hour. */
@@ -561,7 +559,6 @@ body.focus-open{overflow:hidden}
       var byId = {}; S.tasks.forEach(function (t) { byId[t.id] = t; });
       S.nexts = nx.filter(function (t) { return hasLabel(t, 'next') && !hasLabel(t, 'proposed'); }).map(function (t) { return byId[t.id] || t; });
       S.error = null; S.loaded = true; S.loadedAt = Date.now();
-      tidyTimer();
     }, function (e) { if (S.loadToken === token) S.error = e; })
       .then(function () { if (S.loadToken !== token) return; clearTimeout(S.stallTimer); S.loading = false; S.stalled = false; render(); });
   }
@@ -1286,34 +1283,27 @@ body.focus-open{overflow:hidden}
   }
 
   /* ---------- the focus timer ----------
-     Tap a task in the day's list: the screen fills with a ring that empties
-     as the task's time runs down, so how much is left reads at a glance.
-     One timer at a time, kept on this device, so closing the screen (or the
-     app) doesn't stop it; tap the task again to come back to it. */
-  var TKEY = 'docket.timer', fTick = null, wake = null, fBuzzed = false;
-  function readTimer() { try { var t = JSON.parse(localStorage.getItem(TKEY) || 'null'); return t && t.id ? t : null; } catch (x) { return null; } }
-  function writeTimer(t) { try { if (t) localStorage.setItem(TKEY, JSON.stringify(t)); else localStorage.removeItem(TKEY); } catch (x) { } }
-  function elapsed(t, now) { return (t.pausedAt || now) - t.startedAt - (t.pausedMs || 0); }
-  function leftMs(t) { return t.totalMs - elapsed(t, Date.now()); }
-  function timerLeft(id) { var t = readTimer(); return t && t.id === id ? leftMs(t) : null; }
-  function mmss(ms) {
-    var neg = ms < 0, s = Math.round(Math.abs(ms) / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = s % 60;
+     Tap a task in the day's list: the screen fills with a ring that counts
+     down to the task's planned finish, so how much is left reads at a
+     glance. It follows the plan: start late and there is less time; add
+     5 minutes and the task (and everything after it) moves on by five. */
+  var FKEY = 'docket.focus', fTick = null, wake = null, fBuzzed = false;
+  function itemById(id) { return items().filter(function (x) { return x.id === id; })[0]; }
+  /* Seconds since midnight, London time. */
+  function nowSec() {
+    var h = 0, m = 0, sec = 0;
+    new Intl.DateTimeFormat('en-GB', { timeZone: LDN, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(Date.now()))
+      .forEach(function (p) { if (p.type === 'hour') h = +p.value; if (p.type === 'minute') m = +p.value; if (p.type === 'second') sec = +p.value; });
+    return h * 3600 + m * 60 + sec;
+  }
+  function mmss(sec) {
+    var neg = sec < 0, s = Math.round(Math.abs(sec)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = s % 60;
     return (neg ? '+' : '') + (h ? h + ':' + (m < 10 ? '0' : '') + m : m) + ':' + (r < 10 ? '0' : '') + r;
   }
-  function itemById(id) { return items().filter(function (x) { return x.id === id; })[0]; }
-  function startTimer(it) {
-    var t = { id: it.id, title: it.title, sub: it.kind === 'tmp' ? 'Temp' : (projName(it.pid) || ''), totalMs: it.min * 60000, startedAt: Date.now(), pausedAt: null, pausedMs: 0, day: S.date, start: it.start, min: it.min };
-    writeTimer(t); fBuzzed = false; return t;
-  }
-  /* Tap a task. Its own timer: come back to it. No timer running: start
-     one for the task's length. Another task's timer running: show this
-     task ready to start, so a stray tap never throws a running timer away. */
   function openTimer(id) {
     var it = itemById(id); if (!it || it.done || it.kind === 'ev') return;
-    var t = readTimer();
-    if (t && t.id !== id && leftMs(t) > 0) S.focus = { id: id, ready: true, other: t };
-    else { if (!t || t.id !== id) t = startTimer(it); S.focus = { id: id }; }
-    t = readTimer(); if (t && t.id === id && !t.open) { t.open = true; writeTimer(t); }
+    S.focus = { id: id, day: S.date }; fBuzzed = false;
+    try { localStorage.setItem(FKEY, JSON.stringify(S.focus)); } catch (x) { }
     closeMenu();
     var el = document.getElementById('focus'); el.hidden = false; document.body.classList.add('focus-open');
     keepAwake(true);
@@ -1324,7 +1314,7 @@ body.focus-open{overflow:hidden}
   function closeTimer() {
     if (!S.focus) return;
     S.focus = null; clearInterval(fTick); fTick = null;
-    var t = readTimer(); if (t && t.open) { t.open = false; writeTimer(t); }
+    try { localStorage.removeItem(FKEY); } catch (x) { }
     document.getElementById('focus').hidden = true; document.body.classList.remove('focus-open');
     document.title = 'Docket'; keepAwake(false); render();
   }
@@ -1335,57 +1325,40 @@ body.focus-open{overflow:hidden}
   }
   function drawFocus(full) {
     var f = S.focus; if (!f) return;
-    var el = document.getElementById('focus'), it = itemById(f.id), t = readTimer();
-    var own = t && t.id === f.id && !f.ready ? t : null;
-    var title = own ? own.title : it ? it.title : '', sub = own ? own.sub : it ? (it.kind === 'tmp' ? 'Temp' : projName(it.pid) || '') : '';
-    var total = own ? own.totalMs : (it ? it.min * 60000 : 0), left = own ? leftMs(own) : total;
+    var el = document.getElementById('focus');
+    /* The task may have gone: ticked off or moved off this day elsewhere. */
+    var it = f.day === S.date ? itemById(f.id) : null;
+    if (!it || it.done) { closeTimer(); return; }
+    var total = it.min * 60, startS = it.start * 60, endS = (it.start + it.min) * 60;
+    var today = f.day === S.today, now = nowSec();
+    var notYet = !today || now < startS;
+    var left = notYet ? total : endS - now;
     var frac = total > 0 ? Math.max(0, Math.min(1, left / total)) : 0, C = 2 * Math.PI * 88;
-    var over = left < 0, late = !over && left <= Math.min(5 * 60000, total * 0.2), paused = own && own.pausedAt;
-    el.classList.toggle('over', over); el.classList.toggle('late', late && !paused); el.classList.toggle('paused', !!paused);
+    var over = left < 0, late = !over && !notYet && left <= Math.min(300, total * 0.2);
+    el.classList.toggle('over', over); el.classList.toggle('late', late); el.classList.toggle('paused', notYet);
     document.getElementById('farc').setAttribute('stroke-dasharray', (frac * C).toFixed(1) + ' ' + C.toFixed(1));
     document.getElementById('fleft').textContent = mmss(left);
-    document.getElementById('fsub').textContent = f.ready ? durLabel(Math.round(total / 60000)) + ', ready to start' : over ? 'over the ' + durLabel(Math.round(total / 60000)) + ' planned' : paused ? 'paused, of ' + durLabel(Math.round(total / 60000)) : 'left of ' + durLabel(Math.round(total / 60000));
-    if (own && !paused && !over) document.title = mmss(left) + ' · ' + title;
-    else if (over) document.title = 'Time’s up · ' + title;
-    if (over && !fBuzzed) { fBuzzed = true; if (navigator.vibrate) { try { navigator.vibrate([250, 120, 250]); } catch (x) { } } document.getElementById('flive').textContent = 'Time’s up for ' + title + '.'; }
-    if (!full) return;
-    document.getElementById('fproj').textContent = sub;
-    document.getElementById('ftitle').textContent = title;
-    var meta = [];
-    if (it) meta.push('Planned ' + clock(it.start) + '–' + clock(it.start + it.min));
-    if (own && !paused && !over) meta.push('finishes ' + clock(nowMin() + Math.ceil(left / 60000)));
-    document.getElementById('fmeta').textContent = meta.join(' · ');
-    var b = '';
-    if (f.ready) b += '<button class="btn primary" data-act="timer-start">Start timer</button>';
-    else if (own) {
-      b += paused ? '<button class="btn primary" data-act="timer-resume">Resume</button>' : '<button class="btn" data-act="timer-pause">Pause</button>';
-      b += '<button class="btn" data-act="timer-more">+5 min</button>';
-      b += '<button class="btn" data-act="timer-stop">Stop timer</button>';
-      b += '<button class="btn" data-act="timer-done">Done ✓</button>';
-    }
-    document.getElementById('fbtns').innerHTML = b;
-    document.getElementById('fother').innerHTML = f.ready && f.other ? '“' + esc(f.other.title) + '” has ' + mmss(leftMs(f.other)) + ' left on its timer. Starting this one stops it. <button data-act="timer-back">Back to it</button>' : '';
+    var len = durLabel(it.min);
+    document.getElementById('fsub').textContent = notYet ? (today ? 'starts in ' + durLabel(Math.max(1, Math.ceil((startS - now) / 60))) : len + ' on ' + dayInline(f.day)) : over ? 'past the planned finish' : 'left until ' + clock(it.start + it.min);
+    if (!notYet) document.title = (over ? 'Over · ' : mmss(left) + ' · ') + it.title;
+    if (over && !fBuzzed) { fBuzzed = true; if (navigator.vibrate) { try { navigator.vibrate([250, 120, 250]); } catch (x) { } } document.getElementById('flive').textContent = 'Planned finish reached for ' + it.title + '.'; }
+    if (!over) fBuzzed = false;
+    var key = it.title + '|' + it.start + '|' + it.min + '|' + notYet;
+    if (!full && f.drawn === key) return;
+    f.drawn = key;
+    document.getElementById('fproj').textContent = it.kind === 'tmp' ? 'Temp' : (projName(it.pid) || '');
+    document.getElementById('ftitle').textContent = it.title;
+    document.getElementById('fmeta').textContent = 'Planned ' + clock(it.start) + '–' + clock(it.start + it.min) + ' · ' + len;
+    document.getElementById('fbtns').innerHTML = '<button class="btn" data-act="timer-more" title="Make the task 5 minutes longer; later tasks move on">+5 min</button>' +
+      '<button class="btn primary" data-act="timer-done">Done ✓</button>';
+    document.getElementById('fother').textContent = '';
   }
   function timerAct(act) {
     var f = S.focus; if (!f) return;
-    var t = readTimer(), now = Date.now();
     if (act === 'timer-close') { closeTimer(); return; }
-    if (act === 'timer-start') { var it = itemById(f.id); if (it) { var nt = startTimer(it); nt.open = true; writeTimer(nt); } S.focus = { id: f.id }; }
-    else if (act === 'timer-back') { if (t) { S.focus = { id: t.id }; t.open = true; writeTimer(t); } }
-    else if (!t || t.id !== f.id) return;
-    else if (act === 'timer-pause') { t.pausedAt = now; writeTimer(t); }
-    else if (act === 'timer-resume') { t.pausedMs = (t.pausedMs || 0) + (now - t.pausedAt); t.pausedAt = null; writeTimer(t); }
-    else if (act === 'timer-more') { t.totalMs += 5 * 60000; if (leftMs(t) > 0) fBuzzed = false; writeTimer(t); }
-    else if (act === 'timer-stop') { writeTimer(null); closeTimer(); toast('Timer stopped.'); return; }
-    else if (act === 'timer-done') { var id = f.id; writeTimer(null); closeTimer(); tick(id); return; }
-    drawFocus(true);
-  }
-  /* A timer for a task that has gone (ticked off here or elsewhere, or
-     removed) is cleared. */
-  function tidyTimer() {
-    var t = readTimer(); if (!t || t.day !== S.date || !S.loaded) return;
-    var it = itemById(t.id);
-    if (!it || it.done) { writeTimer(null); if (S.focus && S.focus.id === t.id) closeTimer(); }
+    var it = itemById(f.id); if (!it) return;
+    if (act === 'timer-more') { resize(it.id, Math.min(480, it.min + 5)); drawFocus(true); return; }
+    if (act === 'timer-done') { var id = f.id; closeTimer(); tick(id); }
   }
 
   /* ---------- the day's own data (temp tasks, padlocks, ticked-off tasks) ----------
@@ -1490,8 +1463,6 @@ body.focus-open{overflow:hidden}
     if (it.kind === 'tmp') meta.push('<span class="tag">Temp</span>');
     else if (projName(it.pid)) meta.push('<span>' + esc(projName(it.pid)) + '</span>');
     if (it.recurring) meta.push('<span>Repeats</span>');
-    var tl = !it.done && timerLeft(it.id);
-    if (tl != null) meta.push('<span class="tmr' + (tl < 0 ? ' over' : '') + '">' + (tl < 0 ? 'Timer over by ' + durLabel(Math.ceil(-tl / 60000)) : 'Timer: ' + durLabel(Math.max(1, Math.ceil(tl / 60000))) + ' left') + '</span>');
     var locked = !it.done && isLocked(it.id), span = clock(it.start) + '–' + clock(it.start + it.min);
     /* The end time sits in its own span so a phone can show the start only (the pill gives the length). */
     var spanHtml = clock(it.start) + '<span class="te">–' + clock(it.start + it.min) + '</span>';
@@ -1906,7 +1877,7 @@ body.focus-open{overflow:hidden}
       case 'status': toast(S.todoist.state === 'ok' ? 'Todoist connected' + (S.store.state === 'ok' ? '. Temp tasks are saving.' : '. ' + S.store.msg) + ' ' + calStatus() + ' ' + VERSION : (S.todoist.msg || 'Checking Todoist…')); break;
       case 'tick': tick(id); break;
       case 'timer': openTimer(id); break;
-      case 'timer-close': case 'timer-start': case 'timer-back': case 'timer-pause': case 'timer-resume': case 'timer-more': case 'timer-stop': case 'timer-done': timerAct(act); break;
+      case 'timer-close': case 'timer-more': case 'timer-done': timerAct(act); break;
       case 'add': addFromBacklog(id, null); if (window.innerWidth <= 860) toast('Added to ' + dayInline(S.date) + '.'); break;
       case 'replan': whenFresh(replanFromNow); break;
       case 'undo-replan': undoReplan(); break;
@@ -1980,8 +1951,14 @@ body.focus-open{overflow:hidden}
   loadLocal(); loadProjects(); load();
   /* Never redraw under someone editing a proposal or using the chooser. */
   function busy() { var a = document.activeElement; return !!(S.sheet || (a && a.closest && a.closest('.prop,.menu'))); }
-  /* A timer left open when the page was last closed comes back with it. */
-  (function () { var t = readTimer(); if (t && t.open && t.day === S.date && leftMs(t) > -3600000) { var go = function () { if (itemById(t.id)) openTimer(t.id); }; setTimeout(go, 1200); } })();
+  /* A timer left open when the page last closed (or reloaded for a new
+     version) comes back once the day has loaded. */
+  (function () {
+    var f = null; try { f = JSON.parse(localStorage.getItem(FKEY) || 'null'); } catch (x) { }
+    if (!f || f.day !== S.date) return;
+    var tries = 0, go = function () { if (S.loaded && itemById(f.id)) openTimer(f.id); else if (++tries < 20) setTimeout(go, 500); };
+    setTimeout(go, 500);
+  })();
   /* While open: refresh every 30 seconds (not while dragging, resizing or
      choosing something), and redraw so the time line keeps up. */
   setInterval(function () { if (!drag && !scrub && !busy() && document.visibilityState === 'visible') { if (todayISO() !== S.today || Date.now() - S.loadedAt > 28000) { load(); checkVersion(); } else render(); } }, 30000);
